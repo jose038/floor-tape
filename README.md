@@ -2,6 +2,10 @@
 
 Mobile-first disclosure tracker for U.S. STOCK Act periodic transaction reports. Hypothetical mark-to-market from amount-range midpoints and public last closes. Not investment advice, and not a claim of official profit.
 
+## Hosting
+
+Production and pull-request previews run on Cloud Run in the same Google Cloud project as CardFlow. Previews get a stable `*.run.app` URL for the life of the PR. There is no load balancer and no reserved static IP. See [deploy/README.md](deploy/README.md).
+
 ## Run
 
 ```sh
