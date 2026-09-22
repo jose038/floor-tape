@@ -1,0 +1,63 @@
+# Deploy Floor Tape to Cloud Run on every push to main.
+# Creates the service on the first run and only rolls the image after that
+# when flags stay the same. No load balancer and no reserved IP.
+name: Deploy to Cloud Run
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  PROJECT_ID: j-proj-310112
+  REGION: europe-west2
+  IMAGE: europe-west2-docker.pkg.dev/j-proj-310112/floor-tape/app
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Preview safety tests
+        run: python3 -m unittest discover -s deploy -p 'test_*.py'
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Test
+        run: npm ci && npm test && npm run typecheck
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev --quiet
+
+      - name: Build and push image
+        id: image
+        run: |
+          TAG="${GITHUB_SHA::7}"
+          docker build -t "${IMAGE}:${TAG}" .
+          docker push "${IMAGE}:${TAG}"
+          echo "uri=${IMAGE}:${TAG}" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy production Cloud Run service
+        env:
+          PROJECT: ${{ env.PROJECT_ID }}
+          REGION: ${{ env.REGION }}
+        run: |
+          chmod +x deploy/deploy-service.sh
+          ./deploy/deploy-service.sh "${{ steps.image.outputs.uri }}"
