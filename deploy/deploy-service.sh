@@ -40,7 +40,7 @@ gcloud run deploy "${SERVICE}" \
   --concurrency=8 \
   --timeout=300 \
   --service-account="floor-tape-run@${PROJECT}.iam.gserviceaccount.com" \
-  --set-env-vars=HOST=0.0.0.0 \
+  --update-env-vars=HOST=0.0.0.0 \
   --quiet
 
 URL="$(gcloud run services describe "${SERVICE}" \

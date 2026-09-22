@@ -32,7 +32,13 @@ Production is a second service, `floor-tape`, with its own stable `run.app` URL.
 
 Idle cost is zero. You pay only for the seconds a request is being served, and
 Cloud Run’s monthly free tier covers a personal tape. Do not add a load balancer,
-a serverless NEG, or a reserved external IP.
+a serverless NEG, a reserved external IP, or `min-instances=1`.
+
+New filings are checked by Cloud Scheduler every 15 minutes (`floor-tape-poll` →
+`POST /internal/poll`). The container wakes, compares the Hillscore file with the
+last check, sends Web Push for anything new, and scales back to zero. The first
+check only records what is already on the tape, so installing the app does not
+replay history. `./deploy/setup-notify.sh` creates the keys and the job.
 
 ## Workflows
 

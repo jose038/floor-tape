@@ -42,3 +42,19 @@ a {
   color: inherit;
   text-decoration: none;
 }
+
+.tape-main {
+  padding-bottom: calc(8rem + env(safe-area-inset-bottom));
+}
+
+@media (min-width: 768px) {
+  .tape-main {
+    padding-bottom: 2.5rem;
+  }
+}
+
+@media (display-mode: standalone) {
+  .tape-header {
+    padding-top: env(safe-area-inset-top);
+  }
+}

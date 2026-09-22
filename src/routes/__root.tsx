@@ -20,11 +20,14 @@ export const Route = createRootRoute({
       { name: 'description', content: 'STOCK Act periodic transaction tape with hypothetical range-mid marks.' },
       { name: 'apple-mobile-web-app-title', content: 'Floor Tape' },
       { name: 'apple-mobile-web-app-capable', content: 'yes' },
+      { name: 'mobile-web-app-capable', content: 'yes' },
+      { name: 'apple-mobile-web-app-status-bar-style', content: 'black-translucent' },
     ],
     links: [
       { rel: 'stylesheet', href: appCss },
       { rel: 'manifest', href: '/manifest.webmanifest' },
       { rel: 'icon', href: '/favicon.svg', type: 'image/svg+xml' },
+      { rel: 'apple-touch-icon', href: '/apple-touch-icon.png' },
     ],
   }),
   shellComponent: RootShell,
@@ -42,6 +45,9 @@ function RootShell({ children }: { children: ReactNode }) {
       }
     }
     window.addEventListener('keydown', onKey)
+    if ('serviceWorker' in navigator) {
+      void navigator.serviceWorker.register('/sw.js').catch(() => undefined)
+    }
     return () => window.removeEventListener('keydown', onKey)
   }, [])
 
@@ -52,12 +58,18 @@ function RootShell({ children }: { children: ReactNode }) {
       </head>
       <body className="bg-bg text-ink antialiased">
         <div className="min-h-screen bg-bg">
-          <header className="sticky top-0 z-40 border-b border-line bg-bg/95 backdrop-blur">
-            <div className="mx-auto flex w-full max-w-3xl min-w-0 items-center gap-3 px-3 py-2">
+          <header className="tape-header sticky top-0 z-40 border-b border-line bg-bg/95 backdrop-blur">
+            <div className="mx-auto flex w-full max-w-6xl min-w-0 items-center gap-3 px-3 py-2 md:px-6">
               <Link to="/" className="shrink-0 font-mono text-sm tracking-[0.18em] text-ink">
                 FLOOR TAPE
               </Link>
-              <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-muted">STOCK Act disclosures</span>
+              <span className="hidden min-w-0 flex-1 truncate font-mono text-[11px] text-muted sm:block">STOCK Act disclosures</span>
+              <nav className="ml-auto hidden items-center gap-1 md:flex">
+                <Tab to="/" label="Tape" match="tape" />
+                <Tab to="/members" label="Members" match="members" />
+                <Tab to="/alerts" label="Alerts" match="alerts" />
+                <Tab to="/about" label="Method" match="about" />
+              </nav>
               <button
                 type="button"
                 onClick={() => setSearchOpen(true)}
@@ -66,21 +78,18 @@ function RootShell({ children }: { children: ReactNode }) {
                 Search<span className="hidden sm:inline"> Cmd K</span>
               </button>
             </div>
-            <p className="mx-auto w-full max-w-3xl px-3 pb-2 font-mono text-[11px] leading-snug text-muted">
+            <p className="mx-auto w-full max-w-6xl px-3 pb-2 font-mono text-[11px] leading-snug text-muted md:px-6">
               Hypothetical marks from disclosure ranges — not investment advice.
             </p>
           </header>
-          <main
-            className="mx-auto w-full min-w-0 max-w-3xl px-3 pt-3 pb-32"
-            style={{ paddingBottom: 'calc(8rem + env(safe-area-inset-bottom))' }}
-          >
+          <main className="tape-main mx-auto w-full min-w-0 max-w-6xl px-3 pt-3 pb-32 md:px-6 md:pb-10">
             {children}
           </main>
           <nav
-            className="fixed inset-x-0 bottom-0 z-40 border-t border-line bg-bg"
+            className="fixed inset-x-0 bottom-0 z-40 border-t border-line bg-bg md:hidden"
             style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
           >
-            <div className="mx-auto grid w-full max-w-3xl grid-cols-4">
+            <div className="mx-auto grid w-full max-w-6xl grid-cols-4">
               <Tab to="/" label="Tape" match="tape" />
               <Tab to="/members" label="Members" match="members" />
               <Tab to="/alerts" label="Alerts" match="alerts" />

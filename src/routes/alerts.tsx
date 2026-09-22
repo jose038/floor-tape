@@ -1,5 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useMemo, useState } from 'react'
+import { PushPanel } from '../components/push-panel'
 import { SourceBanner } from '../components/ui'
 import { useWatches } from '../client/watches'
 import { alertPreview, compareNewest, hasWatchRules, isWatched, LARGE_AMOUNT_MIN } from '../domain/pure'
@@ -35,6 +36,7 @@ function AlertsPage() {
   return (
     <div className="min-w-0 space-y-4">
       <SourceBanner labeledSample={data.labeledSample} />
+      <PushPanel />
       <h1 className="font-mono text-sm tracking-wide">Alerts</h1>
       <p className="font-mono text-[11px] leading-relaxed text-muted">
         Follows stay in this browser. The letter below is a preview — Floor Tape does not send email.
