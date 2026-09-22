@@ -87,7 +87,7 @@ function TapePage() {
       <p className="font-mono text-[11px] text-muted">
         Newest {formatCount(data.filings.length)} of {formatCount(data.totalMatched)}
       </p>
-      <div className="space-y-2">
+      <div className="space-y-2 lg:grid lg:grid-cols-2 lg:gap-2 lg:space-y-0">
         {data.filings.length === 0 ? (
           <p className="font-mono text-sm text-muted">No filings match this filter.</p>
         ) : (

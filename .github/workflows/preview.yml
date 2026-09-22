@@ -1,0 +1,156 @@
+# PR preview: build this branch and deploy Cloud Run service floor-tape-pr-<n>.
+# The HTTPS URL is stable for the life of the PR. Closing or merging deletes it.
+# Does not update production service `floor-tape`. Fork PRs are skipped.
+name: PR Cloud Run preview
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, closed]
+
+concurrency:
+  group: floor-tape-preview-pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+env:
+  PROJECT_ID: j-proj-310112
+  REGION: europe-west2
+  IMAGE: europe-west2-docker.pkg.dev/j-proj-310112/floor-tape/app
+
+jobs:
+  preview:
+    name: Deploy PR preview
+    if: >
+      github.event.action != 'closed'
+      && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Preview safety tests
+        run: python3 -m unittest discover -s deploy -p 'test_*.py'
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Test
+        run: npm ci && npm test
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev --quiet
+
+      - name: Build and push PR image
+        id: image
+        run: |
+          TAG="$(python3 deploy/preview.py image-tag --pr "${{ github.event.pull_request.number }}" --sha "${GITHUB_SHA}")"
+          docker build -t "${IMAGE}:${TAG}" .
+          docker push "${IMAGE}:${TAG}"
+          echo "uri=${IMAGE}:${TAG}" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy PR-scoped Cloud Run service
+        id: deploy
+        env:
+          PROJECT: ${{ env.PROJECT_ID }}
+          REGION: ${{ env.REGION }}
+          PREVIEW_URL_FILE: ${{ runner.temp }}/preview-url.txt
+        run: |
+          chmod +x deploy/preview-deploy.sh deploy/preview-teardown.sh
+          ./deploy/preview-deploy.sh \
+            "${{ github.event.pull_request.number }}" \
+            "${{ steps.image.outputs.uri }}"
+
+      - name: Post preview URL on the pull request
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PREVIEW_URL: ${{ steps.deploy.outputs.url }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${PREVIEW_URL}" ]]; then
+            echo "error: deploy step did not output a preview URL" >&2
+            exit 1
+          fi
+          python3 deploy/preview.py comment-payload --pr "${PR_NUMBER}" --url "${PREVIEW_URL}" \
+            > "${RUNNER_TEMP}/preview-comment.json"
+          gh api --paginate "repos/${{ github.repository }}/issues/${PR_NUMBER}/comments" \
+            > "${RUNNER_TEMP}/pr-comments.json"
+          ACTION="$(python3 deploy/preview.py upsert-comment --comments-json "${RUNNER_TEMP}/pr-comments.json")"
+          if [[ "${ACTION}" == "create" ]]; then
+            gh api --method POST "repos/${{ github.repository }}/issues/${PR_NUMBER}/comments" \
+              --input "${RUNNER_TEMP}/preview-comment.json"
+          else
+            CID="${ACTION#update }"
+            case "${CID}" in
+              ''|*[!0-9]*) echo "error: bad upsert action: ${ACTION}" >&2; exit 1 ;;
+            esac
+            gh api --method PATCH "repos/${{ github.repository }}/issues/comments/${CID}" \
+              --input "${RUNNER_TEMP}/preview-comment.json"
+          fi
+
+  teardown:
+    name: Destroy PR preview
+    if: >
+      github.event.action == 'closed'
+      && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Delete PR-scoped Cloud Run service
+        env:
+          PROJECT: ${{ env.PROJECT_ID }}
+          REGION: ${{ env.REGION }}
+        run: |
+          chmod +x deploy/preview-teardown.sh
+          ./deploy/preview-teardown.sh "${{ github.event.pull_request.number }}"
+
+      - name: Mark preview comment as deleted
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          python3 deploy/preview.py destroyed-comment-payload --pr "${PR_NUMBER}" \
+            > "${RUNNER_TEMP}/preview-comment.json"
+          gh api --paginate "repos/${{ github.repository }}/issues/${PR_NUMBER}/comments" \
+            > "${RUNNER_TEMP}/pr-comments.json"
+          ACTION="$(python3 deploy/preview.py upsert-comment --comments-json "${RUNNER_TEMP}/pr-comments.json")"
+          if [[ "${ACTION}" == "create" ]]; then
+            gh api --method POST "repos/${{ github.repository }}/issues/${PR_NUMBER}/comments" \
+              --input "${RUNNER_TEMP}/preview-comment.json"
+          else
+            CID="${ACTION#update }"
+            case "${CID}" in
+              ''|*[!0-9]*) echo "error: bad upsert action: ${ACTION}" >&2; exit 1 ;;
+            esac
+            gh api --method PATCH "repos/${{ github.repository }}/issues/comments/${CID}" \
+              --input "${RUNNER_TEMP}/preview-comment.json"
+          fi

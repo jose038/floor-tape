@@ -1,13 +1,14 @@
 import { mkdir, readdir, readFile } from 'node:fs/promises'
 import path from 'node:path'
+import { listMigrationFiles } from '../domain/migrations'
 import { ensureSchema, type Db } from '../domain/ingest'
 
 let opening: Promise<Db> | null = null
 
 export async function readMigrationSql(): Promise<string> {
   const dir = path.join(process.cwd(), 'migrations')
-  const files = (await readdir(dir)).filter((name) => /^0002_.*\.sql$/.test(name)).sort()
-  if (files.length === 0) throw new Error('migrations/0002_*.sql is missing')
+  const files = listMigrationFiles(await readdir(dir))
+  if (!files.some((name) => name.startsWith('0002_'))) throw new Error('migrations/0002_*.sql is missing')
   const chunks = await Promise.all(files.map((file) => readFile(path.join(dir, file), 'utf8')))
   return chunks.join('\n')
 }

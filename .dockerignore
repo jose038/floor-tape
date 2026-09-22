@@ -1,0 +1,12 @@
+node_modules
+.output
+.nitro
+.data
+.git
+.github
+.env
+.env.*
+coverage
+*.log
+dist
+.DS_Store

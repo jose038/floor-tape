@@ -12,10 +12,13 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AboutRouteImport } from './routes/about'
 import { Route as AlertsRouteImport } from './routes/alerts'
+import { Route as HealthRouteImport } from './routes/health'
 import { Route as MembersRouteImport } from './routes/members'
+import { Route as InternalPollRouteImport } from './routes/internal.poll'
 import { Route as MemberIdRouteImport } from './routes/member.$id'
 import { Route as TickerSymRouteImport } from './routes/ticker.$sym'
 import { Route as TradeIdRouteImport } from './routes/trade.$id'
+import { Route as ApiPushSubscribeRouteImport } from './routes/api.push.subscribe'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -32,9 +35,19 @@ const AlertsRoute = AlertsRouteImport.update({
   path: '/alerts',
   getParentRoute: () => rootRouteImport,
 } as any)
+const HealthRoute = HealthRouteImport.update({
+  id: '/health',
+  path: '/health',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const MembersRoute = MembersRouteImport.update({
   id: '/members',
   path: '/members',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const InternalPollRoute = InternalPollRouteImport.update({
+  id: '/internal/poll',
+  path: '/internal/poll',
   getParentRoute: () => rootRouteImport,
 } as any)
 const MemberIdRoute = MemberIdRouteImport.update({
@@ -52,34 +65,48 @@ const TradeIdRoute = TradeIdRouteImport.update({
   path: '/trade/$id',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiPushSubscribeRoute = ApiPushSubscribeRouteImport.update({
+  id: '/api/push/subscribe',
+  path: '/api/push/subscribe',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/about': typeof AboutRoute
   '/alerts': typeof AlertsRoute
+  '/health': typeof HealthRoute
   '/members': typeof MembersRoute
+  '/internal/poll': typeof InternalPollRoute
   '/member/$id': typeof MemberIdRoute
   '/ticker/$sym': typeof TickerSymRoute
   '/trade/$id': typeof TradeIdRoute
+  '/api/push/subscribe': typeof ApiPushSubscribeRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/about': typeof AboutRoute
   '/alerts': typeof AlertsRoute
+  '/health': typeof HealthRoute
   '/members': typeof MembersRoute
+  '/internal/poll': typeof InternalPollRoute
   '/member/$id': typeof MemberIdRoute
   '/ticker/$sym': typeof TickerSymRoute
   '/trade/$id': typeof TradeIdRoute
+  '/api/push/subscribe': typeof ApiPushSubscribeRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/about': typeof AboutRoute
   '/alerts': typeof AlertsRoute
+  '/health': typeof HealthRoute
   '/members': typeof MembersRoute
+  '/internal/poll': typeof InternalPollRoute
   '/member/$id': typeof MemberIdRoute
   '/ticker/$sym': typeof TickerSymRoute
   '/trade/$id': typeof TradeIdRoute
+  '/api/push/subscribe': typeof ApiPushSubscribeRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -87,38 +114,50 @@ export interface FileRouteTypes {
     | '/'
     | '/about'
     | '/alerts'
+    | '/health'
     | '/members'
+    | '/internal/poll'
     | '/member/$id'
     | '/ticker/$sym'
     | '/trade/$id'
+    | '/api/push/subscribe'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/about'
     | '/alerts'
+    | '/health'
     | '/members'
+    | '/internal/poll'
     | '/member/$id'
     | '/ticker/$sym'
     | '/trade/$id'
+    | '/api/push/subscribe'
   id:
     | '__root__'
     | '/'
     | '/about'
     | '/alerts'
+    | '/health'
     | '/members'
+    | '/internal/poll'
     | '/member/$id'
     | '/ticker/$sym'
     | '/trade/$id'
+    | '/api/push/subscribe'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AboutRoute: typeof AboutRoute
   AlertsRoute: typeof AlertsRoute
+  HealthRoute: typeof HealthRoute
   MembersRoute: typeof MembersRoute
+  InternalPollRoute: typeof InternalPollRoute
   MemberIdRoute: typeof MemberIdRoute
   TickerSymRoute: typeof TickerSymRoute
   TradeIdRoute: typeof TradeIdRoute
+  ApiPushSubscribeRoute: typeof ApiPushSubscribeRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -144,11 +183,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AlertsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/health': {
+      id: '/health'
+      path: '/health'
+      fullPath: '/health'
+      preLoaderRoute: typeof HealthRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/members': {
       id: '/members'
       path: '/members'
       fullPath: '/members'
       preLoaderRoute: typeof MembersRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/internal/poll': {
+      id: '/internal/poll'
+      path: '/internal/poll'
+      fullPath: '/internal/poll'
+      preLoaderRoute: typeof InternalPollRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/member/$id': {
@@ -172,6 +225,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof TradeIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/push/subscribe': {
+      id: '/api/push/subscribe'
+      path: '/api/push/subscribe'
+      fullPath: '/api/push/subscribe'
+      preLoaderRoute: typeof ApiPushSubscribeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -179,10 +239,13 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AboutRoute: AboutRoute,
   AlertsRoute: AlertsRoute,
+  HealthRoute: HealthRoute,
   MembersRoute: MembersRoute,
+  InternalPollRoute: InternalPollRoute,
   MemberIdRoute: MemberIdRoute,
   TickerSymRoute: TickerSymRoute,
   TradeIdRoute: TradeIdRoute,
+  ApiPushSubscribeRoute: ApiPushSubscribeRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
