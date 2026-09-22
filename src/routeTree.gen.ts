@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AboutRouteImport } from './routes/about'
 import { Route as AlertsRouteImport } from './routes/alerts'
+import { Route as HealthRouteImport } from './routes/health'
 import { Route as MembersRouteImport } from './routes/members'
 import { Route as MemberIdRouteImport } from './routes/member.$id'
 import { Route as TickerSymRouteImport } from './routes/ticker.$sym'
@@ -30,6 +31,11 @@ const AboutRoute = AboutRouteImport.update({
 const AlertsRoute = AlertsRouteImport.update({
   id: '/alerts',
   path: '/alerts',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const HealthRoute = HealthRouteImport.update({
+  id: '/health',
+  path: '/health',
   getParentRoute: () => rootRouteImport,
 } as any)
 const MembersRoute = MembersRouteImport.update({
@@ -57,6 +63,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/about': typeof AboutRoute
   '/alerts': typeof AlertsRoute
+  '/health': typeof HealthRoute
   '/members': typeof MembersRoute
   '/member/$id': typeof MemberIdRoute
   '/ticker/$sym': typeof TickerSymRoute
@@ -66,6 +73,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/about': typeof AboutRoute
   '/alerts': typeof AlertsRoute
+  '/health': typeof HealthRoute
   '/members': typeof MembersRoute
   '/member/$id': typeof MemberIdRoute
   '/ticker/$sym': typeof TickerSymRoute
@@ -76,6 +84,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/about': typeof AboutRoute
   '/alerts': typeof AlertsRoute
+  '/health': typeof HealthRoute
   '/members': typeof MembersRoute
   '/member/$id': typeof MemberIdRoute
   '/ticker/$sym': typeof TickerSymRoute
@@ -87,6 +96,7 @@ export interface FileRouteTypes {
     | '/'
     | '/about'
     | '/alerts'
+    | '/health'
     | '/members'
     | '/member/$id'
     | '/ticker/$sym'
@@ -96,6 +106,7 @@ export interface FileRouteTypes {
     | '/'
     | '/about'
     | '/alerts'
+    | '/health'
     | '/members'
     | '/member/$id'
     | '/ticker/$sym'
@@ -105,6 +116,7 @@ export interface FileRouteTypes {
     | '/'
     | '/about'
     | '/alerts'
+    | '/health'
     | '/members'
     | '/member/$id'
     | '/ticker/$sym'
@@ -115,6 +127,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AboutRoute: typeof AboutRoute
   AlertsRoute: typeof AlertsRoute
+  HealthRoute: typeof HealthRoute
   MembersRoute: typeof MembersRoute
   MemberIdRoute: typeof MemberIdRoute
   TickerSymRoute: typeof TickerSymRoute
@@ -142,6 +155,13 @@ declare module '@tanstack/react-router' {
       path: '/alerts'
       fullPath: '/alerts'
       preLoaderRoute: typeof AlertsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/health': {
+      id: '/health'
+      path: '/health'
+      fullPath: '/health'
+      preLoaderRoute: typeof HealthRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/members': {
@@ -179,6 +199,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AboutRoute: AboutRoute,
   AlertsRoute: AlertsRoute,
+  HealthRoute: HealthRoute,
   MembersRoute: MembersRoute,
   MemberIdRoute: MemberIdRoute,
   TickerSymRoute: TickerSymRoute,
