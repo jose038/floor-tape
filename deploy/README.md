@@ -36,6 +36,17 @@ a serverless NEG, or a reserved external IP.
 
 ## Workflows
 
+The workflow files are in `deploy/github/workflows/`. GitHub only runs them from `.github/workflows/`. The `gh` login on this machine is an OAuth token without the `workflow` scope, so those files cannot be pushed into `.github/workflows` until that scope is granted:
+
+```bash
+gh auth refresh -h github.com -s workflow
+mkdir -p .github/workflows
+cp deploy/github/workflows/*.yml .github/workflows/
+git add .github/workflows
+git commit -m "ci: enable Cloud Run deploy and PR preview workflows"
+git push
+```
+
 | Workflow | When |
 |---|---|
 | `Deploy to Cloud Run` | Push to `main`, or manual dispatch. Builds an immutable tag and deploys `floor-tape`. |
