@@ -1,15 +1,14 @@
-import { clearQuoteCache, readCloseOnDate, readLastCloses, readSeries, type Bar, type FetchLike } from '../domain/quotes'
+import { presentTicker, priceFilings } from '../domain/pricing'
+import { clearQuoteCache, readSeries, type Bar, type FetchLike } from '../domain/quotes'
 import { ingestFilings, type IngestResult } from '../domain/ingest'
 import {
   closeOnOrBefore,
   compareNewest,
-  downsample,
   isChip,
   matchesChip,
   matchesQuery,
   memberStats,
   sanitizeWatches,
-  toYahooSymbol,
   vsSpyBars,
   type Chamber,
   type Filing,
@@ -153,35 +152,13 @@ async function safe<T>(run: () => Promise<T>, fallback: T): Promise<T> {
   }
 }
 
-async function withPrices(rows: Filing[], seriesSymbol?: string | null): Promise<{ filings: ViewFiling[]; series: Bar[] }> {
-  const symbols: string[] = []
-  for (const row of [...rows].sort(compareNewest)) {
-    if (row.yahooSymbol && !symbols.includes(row.yahooSymbol)) symbols.push(row.yahooSymbol)
-    if (symbols.length >= 80) break
+async function withPrices(rows: Filing[], seriesSymbol?: string | null) {
+  try {
+    return await priceFilings(rows, yahooFetch, seriesSymbol)
+  } catch (error) {
+    console.error('[floor-tape] price lookup failed', error instanceof Error ? error.message : error)
+    return { filings: rows.map((row) => toView(row, row.priceOnTradeDate, null)), series: [] }
   }
-  const closes = await safe(() => readLastCloses(symbols, yahooFetch), new Map<string, number | null>())
-  const tradeCache = new Map<string, number | null>()
-  const missing = rows.filter((row) => row.priceOnTradeDate == null && row.yahooSymbol).slice(0, 12)
-  for (const row of missing) {
-    const key = `${row.yahooSymbol}|${row.transactionDate}`
-    if (tradeCache.has(key)) continue
-    tradeCache.set(
-      key,
-      await safe(() => readCloseOnDate(row.yahooSymbol as string, row.transactionDate, yahooFetch), null),
-    )
-  }
-  let series: Bar[] = []
-  if (seriesSymbol) {
-    series = downsample(await safe(() => readSeries(seriesSymbol, yahooFetch, '1y'), []), 160)
-  }
-  const filings = rows.map((row) => {
-    const last = row.yahooSymbol ? (closes.get(row.yahooSymbol) ?? null) : null
-    const trade =
-      row.priceOnTradeDate ??
-      (row.yahooSymbol ? (tradeCache.get(`${row.yahooSymbol}|${row.transactionDate}`) ?? null) : null)
-    return toView(row, trade, last)
-  })
-  return { filings, series }
 }
 
 export type TapePayload = {
@@ -334,14 +311,8 @@ export async function getTicker(sym: string): Promise<{
 }> {
   await ensureIngest(false)
   const meta = await readMeta()
-  const want = sym.trim().toUpperCase()
-  const yahoo = toYahooSymbol(want)
-  const rows = (await allFilings()).filter(
-    (row) => row.symbol === want || row.yahooSymbol === yahoo || row.symbol === yahoo,
-  )
-  const { filings, series } = await withPrices(rows.slice(0, 120), yahoo)
-  const lastClose = filings.find((row) => row.lastClose != null)?.lastClose ?? null
-  return { symbol: want, filings, total: rows.length, series, lastClose, labeledSample: meta.labeledSample }
+  const presented = await presentTicker(await allFilings(), sym, yahooFetch)
+  return { ...presented, labeledSample: meta.labeledSample }
 }
 
 export async function getAlerts(): Promise<{

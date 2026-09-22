@@ -362,6 +362,13 @@ export function matchesChip(
   }
 }
 
+/** Every filing in this symbol, including both the original ticker and the Yahoo form. */
+export function filingsForSymbol(rows: Filing[], sym: string): Filing[] {
+  const want = sym.trim().toUpperCase()
+  const yahoo = toYahooSymbol(want)
+  return rows.filter((row) => row.symbol === want || row.yahooSymbol === yahoo || row.symbol === yahoo)
+}
+
 export function matchesQuery(
   row: { politician: string; symbol: string | null; assetName: string },
   query: string,

@@ -150,8 +150,7 @@ export async function readLastCloses(symbols: string[], fetchImpl: FetchLike): P
         still.push(yahoo)
       }
     }
-    // Spark missed these. Chart-fallback a bounded set so a rejected spark call cannot fan out.
-    for (const yahoo of still.slice(0, 8)) {
+    for (const yahoo of still) {
       const chartUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(yahoo)}?range=5d&interval=1d`
       let last: number | null = null
       const chartText = await readText(fetchImpl, chartUrl)
@@ -164,10 +163,6 @@ export async function readLastCloses(symbols: string[], fetchImpl: FetchLike): P
       }
       lastCache.set(yahoo, last)
       out.set(yahoo, last)
-    }
-    for (const yahoo of still.slice(8)) {
-      if (!lastCache.has(yahoo)) lastCache.set(yahoo, null)
-      out.set(yahoo, lastCache.get(yahoo) ?? null)
     }
   }
   return out
