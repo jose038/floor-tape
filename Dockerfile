@@ -10,7 +10,8 @@ RUN npm ci
 COPY . .
 RUN npm run build \
   && cp node_modules/@electric-sql/pglite/dist/pglite.wasm .output/server/_libs/pglite.wasm \
-  && cp node_modules/@electric-sql/pglite/dist/initdb.wasm .output/server/_libs/initdb.wasm
+  && cp node_modules/@electric-sql/pglite/dist/initdb.wasm .output/server/_libs/initdb.wasm \
+  && cp node_modules/@electric-sql/pglite/dist/pglite.data .output/server/_libs/pglite.data
 
 FROM node:22-bookworm-slim
 WORKDIR /app
