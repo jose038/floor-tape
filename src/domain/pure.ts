@@ -6,10 +6,12 @@ export const LARGE_AMOUNT_MIN = 100_001
 export const REFRESH_INTERVAL_MS = 12 * 60 * 60 * 1000
 export const HOUSE_PORTAL = 'https://disclosures-clerk.house.gov/'
 export const SENATE_PORTAL = 'https://efdsearch.senate.gov/'
+export const WHITE_HOUSE_DISCLOSURES = 'https://www.whitehouse.gov/disclosures/'
 
 export type Side = 'BUY' | 'SELL' | 'OTHER'
-export type Chamber = 'house' | 'senate' | 'unknown'
-export type FilingSource = 'sample' | 'hillscore'
+export type Chamber = 'house' | 'senate' | 'whitehouse' | 'state' | 'unknown'
+export type InstitutionGroup = 'house' | 'senate' | 'whitehouse' | 'other'
+export type FilingSource = 'sample' | 'hillscore' | 'disclosure'
 export type Chip = 'all' | 'buys' | 'sells' | 'late' | 'large' | 'watches'
 
 export type WatchRules = {
@@ -166,7 +168,52 @@ export function normalizeSide(raw: string): Side {
 }
 
 export function officialPortal(chamber: Chamber): string {
-  return chamber === 'senate' ? SENATE_PORTAL : HOUSE_PORTAL
+  if (chamber === 'senate') return SENATE_PORTAL
+  if (chamber === 'whitehouse') return WHITE_HOUSE_DISCLOSURES
+  if (chamber === 'house') return HOUSE_PORTAL
+  return HOUSE_PORTAL
+}
+
+export const INSTITUTION_GROUPS: { id: InstitutionGroup; label: string }[] = [
+  { id: 'house', label: 'House' },
+  { id: 'senate', label: 'Senate' },
+  { id: 'whitehouse', label: 'White House' },
+  { id: 'other', label: 'Other' },
+]
+
+export function institutionGroup(chamber: string): InstitutionGroup {
+  if (chamber === 'house' || chamber === 'senate' || chamber === 'whitehouse') return chamber
+  return 'other'
+}
+
+export function institutionName(chamber: Chamber): string {
+  switch (chamber) {
+    case 'house':
+      return 'House'
+    case 'senate':
+      return 'Senate'
+    case 'whitehouse':
+      return 'White House'
+    case 'state':
+      return 'State'
+    default:
+      return 'Other'
+  }
+}
+
+export function documentLabel(row: { chamber: Chamber; officialUrl: string }): string {
+  const url = row.officialUrl.toLowerCase()
+  if (row.chamber === 'senate' || url.includes('efdsearch.senate.gov')) return 'Senate eFD'
+  if (row.chamber === 'house' || url.includes('disclosures-clerk.house.gov')) return 'House Clerk'
+  if (row.chamber === 'whitehouse' || url.includes('whitehouse.gov')) return 'White House disclosure'
+  if (url.includes('oge.gov')) return 'OGE disclosure'
+  if (row.chamber === 'state') return 'State Department disclosure'
+  return 'Official disclosure'
+}
+
+export function filterByGroup<T extends { chamber: string }>(rows: T[], group: InstitutionGroup | 'all'): T[] {
+  if (group === 'all') return rows
+  return rows.filter((row) => institutionGroup(row.chamber) === group)
 }
 
 export function memberIdFor(bioguide: string | null, politician: string): string {
@@ -193,8 +240,8 @@ export function initials(name: string): string {
 
 export function seatLabel(party: string | null, state: string | null, chamber: Chamber): string {
   const who = [party, state].filter(Boolean).join('-')
-  const house = chamber === 'house' ? 'House' : chamber === 'senate' ? 'Senate' : 'Chamber unknown'
-  return who ? `${who} · ${house}` : house
+  const name = institutionName(chamber)
+  return who ? `${who} · ${name}` : name
 }
 
 export function amountMid(min: number, max: number): number {
@@ -326,7 +373,9 @@ export function isWatched(
   if (rules.members.length) checks.push(rules.members.includes(row.memberId))
   if (rules.tickers.length) checks.push(symbol != null && rules.tickers.includes(symbol.toUpperCase()))
   if (rules.parties.length) checks.push(party != null && rules.parties.includes(party))
-  if (rules.chambers.length) checks.push(rules.chambers.includes(row.chamber))
+  if (rules.chambers.length) {
+    checks.push(rules.chambers.includes(row.chamber) || rules.chambers.includes(institutionGroup(row.chamber)))
+  }
   if (checks.length === 0) return rules.largeBuysOnly
   return checks.some(Boolean)
 }
@@ -475,7 +524,7 @@ export function parseCsv(text: string): Record<string, string>[] {
     })
 }
 
-export type ChamberInfo = { chamber: Exclude<Chamber, 'unknown'> }
+export type ChamberInfo = { chamber: 'house' | 'senate' }
 
 export function parseLegislators(text: string): Map<string, ChamberInfo> {
   const map = new Map<string, ChamberInfo>()
@@ -499,7 +548,7 @@ export function parseLegislators(text: string): Map<string, ChamberInfo> {
   return map
 }
 
-function filingId(parts: string[]): string {
+export function stableFilingId(parts: string[]): string {
   let a = 0x811c9dc5
   let b = 0x811c9dc5 ^ 0x9e3779b9
   let c = 0x811c9dc5 ^ 0x85ebca6b
@@ -548,7 +597,7 @@ export function buildFilings(
     const chamber: Chamber = (bioguide && legislators.get(bioguide)?.chamber) || 'unknown'
     const ticker = resolveTicker(record.symbol)
     const ownerRaw = record.owner?.trim() || 'Self'
-    const baseId = filingId([
+    const baseId = stableFilingId([
       politician,
       bioguide ?? '',
       ticker.symbol ?? '',
@@ -608,10 +657,45 @@ Nancy Pelosi,P000197,D,CA,GOOGL,Alphabet Inc. Class A,BUY,Self + Spouse,2025-01-
 Tommy Tuberville,T000278,R,AL,HUM,Humana Inc.,SELL,Self,2024-01-02,2024-03-15,15001,50000,450.00
 Josh Gottheimer,G000583,D,NJ,MSFT,Microsoft Corporation,BUY,Joint,2024-08-01,2024-08-20,15001,50000,420.55
 Josh Gottheimer,G000583,D,NJ,,Gottheimer Family LP,BUY,Self,2024-05-01,2024-05-20,1001,15000,
+Riley Sample,,I,DC,IBM,International Business Machines,BUY,Self,2024-04-01,2024-04-20,1001,15000,180
 `
 
+function sampleWhiteHouseFiling(): Filing {
+  const politician = 'Alex Sample'
+  const transactionDate = '2024-03-01'
+  const filedDate = '2024-03-18'
+  const min = 1001
+  const max = 15000
+  const lag = lagDays(transactionDate, filedDate) ?? 0
+  return {
+    id: stableFilingId([politician, '', 'SMPL', 'Sample Industries', 'BUY', 'Self', transactionDate, filedDate, String(min), String(max)]),
+    politician,
+    memberId: memberIdFor(null, politician),
+    bioguideId: null,
+    party: null,
+    state: null,
+    chamber: 'whitehouse',
+    symbol: 'SMPL',
+    yahooSymbol: 'SMPL',
+    assetName: 'Sample Industries',
+    transactionType: 'BUY',
+    owner: 'self',
+    ownerRaw: 'Self',
+    transactionDate,
+    filedDate,
+    lagDays: lag,
+    late: lag > LATE_AFTER_DAYS,
+    amountMin: min,
+    amountMax: max,
+    amountMid: amountMid(min, max),
+    priceOnTradeDate: null,
+    officialUrl: WHITE_HOUSE_DISCLOSURES,
+    source: 'sample',
+  }
+}
+
 export function sampleFilings(): Filing[] {
-  return buildFilings(SAMPLE_CSV, parseLegislators(SAMPLE_LEGISLATORS_JSON), 'sample')
+  return [...buildFilings(SAMPLE_CSV, parseLegislators(SAMPLE_LEGISLATORS_JSON), 'sample'), sampleWhiteHouseFiling()].sort(compareNewest)
 }
 
 export type MemberStats = {

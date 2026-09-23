@@ -1,3 +1,4 @@
+import { loadDisclosureBatch } from './disclosures'
 import { presentTicker, priceFilings } from '../domain/pricing'
 import { clearQuoteCache, readSeries, type Bar, type FetchLike } from '../domain/quotes'
 import { ingestFilings, type IngestResult } from '../domain/ingest'
@@ -10,12 +11,14 @@ import {
   memberStats,
   sanitizeWatches,
   vsSpyBars,
-  type Chamber,
   type Filing,
   type Side,
   type WatchRules,
 } from '../domain/pure'
+import { buildRoster, filingFromRow, type RosterMember } from '../domain/roster'
 import { toView, type ViewFiling } from '../domain/view'
+
+export type { RosterMember }
 import { getDb, readMigrationSql } from './db'
 
 const HILLSCORE_CSV = 'https://hillscore.com/data/files/trades.csv'
@@ -50,6 +53,7 @@ export function ensureIngest(force = false): Promise<IngestResult> {
       force,
       fetchCsv: () => fetchText(HILLSCORE_CSV),
       fetchLegislators: () => fetchText(LEGISLATORS_URL),
+      fetchDisclosures: () => loadDisclosureBatch(),
     })
     console.log(`[floor-tape] source=${result.source} rows=${result.count} refreshed=${result.refreshed} sample=${result.labeledSample}`)
     return result
@@ -66,6 +70,7 @@ type Meta = {
   source: 'sample' | 'hillscore'
   labeledSample: boolean
   rowCount: number
+  omissions: string
 }
 
 function asBool(value: unknown): boolean {
@@ -79,7 +84,8 @@ async function readMeta(): Promise<Meta> {
     source: string | null
     labeled_sample: unknown
     row_count: number | string | null
-  }>('SELECT last_ingest_at, source, labeled_sample, row_count FROM ingest_state WHERE id = 1')
+    omissions: string | null
+  }>('SELECT last_ingest_at, source, labeled_sample, row_count, omissions FROM ingest_state WHERE id = 1')
   const row = rows[0]
   const labeledSample = asBool(row?.labeled_sample) || row?.source === 'sample'
   return {
@@ -87,50 +93,11 @@ async function readMeta(): Promise<Meta> {
     source: labeledSample ? 'sample' : 'hillscore',
     labeledSample,
     rowCount: Number(row?.row_count ?? 0),
+    omissions: row?.omissions ?? '',
   }
 }
 
 let rowCache: { key: string; rows: Filing[] } | null = null
-
-function mapRow(row: Record<string, unknown>): Filing {
-  const text = (value: unknown) => {
-    if (value == null) return null
-    const string = String(value).trim()
-    return string ? string : null
-  }
-  const numberOrNull = (value: unknown) => {
-    if (value == null || value === '') return null
-    const parsed = Number(value)
-    return Number.isFinite(parsed) ? parsed : null
-  }
-  const side = row.transaction_type
-  const chamber = row.chamber
-  return {
-    id: String(row.id),
-    politician: String(row.politician),
-    memberId: String(row.member_id),
-    bioguideId: text(row.bioguide_id),
-    party: text(row.party),
-    state: text(row.state),
-    chamber: chamber === 'house' || chamber === 'senate' ? chamber : 'unknown',
-    symbol: text(row.symbol),
-    yahooSymbol: text(row.yahoo_symbol),
-    assetName: String(row.asset_name),
-    transactionType: side === 'BUY' || side === 'SELL' ? side : 'OTHER',
-    owner: String(row.owner),
-    ownerRaw: String(row.owner_raw ?? row.owner),
-    transactionDate: String(row.transaction_date),
-    filedDate: String(row.filed_date),
-    lagDays: Number(row.lag_days),
-    late: asBool(row.late),
-    amountMin: Number(row.amount_min),
-    amountMax: Number(row.amount_max),
-    amountMid: Number(row.amount_mid),
-    priceOnTradeDate: numberOrNull(row.price_on_trade_date),
-    officialUrl: String(row.official_url),
-    source: row.source === 'sample' ? 'sample' : 'hillscore',
-  }
-}
 
 async function allFilings(): Promise<Filing[]> {
   const meta = await readMeta()
@@ -138,7 +105,7 @@ async function allFilings(): Promise<Filing[]> {
   if (rowCache?.key === key) return rowCache.rows
   const db = await getDb()
   const raw = await db.query<Record<string, unknown>>('SELECT * FROM filings')
-  const rows = raw.map(mapRow).sort(compareNewest)
+  const rows = raw.map((row) => filingFromRow(row)).sort(compareNewest)
   rowCache = { key, rows }
   return rows
 }
@@ -199,57 +166,11 @@ export async function getTrade(id: string): Promise<{ filing: ViewFiling | null;
   return { filing: filings[0] ?? null, series, labeledSample: meta.labeledSample }
 }
 
-export type RosterMember = {
-  memberId: string
-  politician: string
-  party: string | null
-  state: string | null
-  chamber: Chamber
-  trades: number
-  lastFiled: string
-  initials: string
-  seat: string
-}
-
-function rosterFrom(rows: Filing[]): RosterMember[] {
-  const map = new Map<string, RosterMember>()
-  for (const row of rows) {
-    const current = map.get(row.memberId)
-    if (!current) {
-      const view = toView(row, row.priceOnTradeDate, null)
-      map.set(row.memberId, {
-        memberId: row.memberId,
-        politician: row.politician,
-        party: row.party,
-        state: row.state,
-        chamber: row.chamber,
-        trades: 1,
-        lastFiled: row.filedDate,
-        initials: view.initials,
-        seat: view.seat,
-      })
-      continue
-    }
-    current.trades += 1
-    if (row.filedDate > current.lastFiled) {
-      const view = toView(row, row.priceOnTradeDate, null)
-      current.lastFiled = row.filedDate
-      current.politician = row.politician
-      current.party = row.party
-      current.state = row.state
-      current.chamber = row.chamber
-      current.initials = view.initials
-      current.seat = view.seat
-    }
-  }
-  return [...map.values()].sort((a, b) => (a.lastFiled < b.lastFiled ? 1 : a.lastFiled > b.lastFiled ? -1 : a.politician.localeCompare(b.politician)))
-}
-
 export async function getMembers(): Promise<{ members: RosterMember[]; labeledSample: boolean; count: number }> {
   await ensureIngest(false)
   const meta = await readMeta()
   const rows = await allFilings()
-  return { members: rosterFrom(rows), labeledSample: meta.labeledSample, count: rows.length }
+  return { members: buildRoster(rows), labeledSample: meta.labeledSample, count: rows.length }
 }
 
 export type MemberPayload = {
@@ -282,7 +203,7 @@ export async function getMember(id: string): Promise<MemberPayload> {
   const spyOn = (date: string) => closeOnOrBefore(spy, date)
   const stats = memberStats(priced, spyOn, spyNow)
   const bars = vsSpyBars(priced, spyOn, spyNow)
-  const member = rosterFrom(rows)[0] ?? null
+  const member = buildRoster(rows)[0] ?? null
   return {
     member,
     stats,
@@ -324,7 +245,7 @@ export async function getAlerts(): Promise<{
   const meta = await readMeta()
   const rows = await allFilings()
   const { filings } = await withPrices(rows.slice(0, 80))
-  return { members: rosterFrom(rows), latest: filings, labeledSample: meta.labeledSample }
+  return { members: buildRoster(rows), latest: filings, labeledSample: meta.labeledSample }
 }
 
 export async function getAbout(): Promise<Meta> {

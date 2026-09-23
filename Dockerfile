@@ -15,10 +15,16 @@ RUN npm run build \
 
 FROM node:22-bookworm-slim
 WORKDIR /app
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends tesseract-ocr \
+  && rm -rf /var/lib/apt/lists/*
 ENV NODE_ENV=production \
     HOST=0.0.0.0 \
     PORT=8080
 COPY --from=build /app/.output ./.output
 COPY --from=build /app/migrations ./migrations
+COPY --from=build /app/scripts/ocr-pdf.mjs ./scripts/ocr-pdf.mjs
+COPY --from=build /app/node_modules/unpdf ./node_modules/unpdf
+COPY --from=build /app/node_modules/@napi-rs ./node_modules/@napi-rs
 EXPOSE 8080
 CMD ["node", ".output/server/index.mjs"]

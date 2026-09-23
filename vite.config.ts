@@ -16,10 +16,10 @@ export default defineConfig({
     strictPort: true,
   },
   ssr: {
-    external: ['@electric-sql/pglite', 'pg'],
+    external: ['@electric-sql/pglite', 'pg', 'unpdf', '@napi-rs/canvas'],
   },
   optimizeDeps: {
-    exclude: ['@electric-sql/pglite', 'pg'],
+    exclude: ['@electric-sql/pglite', 'pg', 'unpdf', '@napi-rs/canvas'],
   },
   plugins: [tailwindcss(), tanstackStart({ srcDirectory: 'src' }), viteReact(), nitro()],
 })
