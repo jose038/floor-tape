@@ -221,11 +221,21 @@ export async function ingestFilings(db: Db, deps: IngestDeps): Promise<IngestRes
     const filings = buildFilings(csv, parseLegislators(legislatorsJson ?? '[]'), 'hillscore')
     if (filings.length === 0) throw new Error('Hillscore CSV had no filings on or after 2023-01-01')
     const extra: Filing[] = []
-    const omissions: string[] = []
+    const omissionNotes = new Map<string, { rank: number; line: string }>()
+    const labelsWithRows = new Set<string>()
+    const putOmission = (label: string, message: string, rank: number) => {
+      const line = `${label}: ${message}`
+      const prev = omissionNotes.get(label)
+      if (!prev || rank > prev.rank) omissionNotes.set(label, { rank, line })
+    }
     if (deps.fetchDisclosures) {
       try {
         const batch = await deps.fetchDisclosures()
-        omissions.push(...batch.omissions)
+        for (const line of batch.omissions) {
+          const split = line.indexOf(': ')
+          if (split === -1) putOmission(line, 'report could not be parsed', 1)
+          else putOmission(line.slice(0, split), line.slice(split + 2), 1)
+        }
         for (const doc of batch.documents) {
           const parsed = parsePeriodicReport(doc.text, {
             url: doc.url,
@@ -233,18 +243,26 @@ export async function ingestFilings(db: Db, deps: IngestDeps): Promise<IngestRes
             hint: doc.hint,
             label: doc.label,
           })
-          if (parsed.length === 0) omissions.push(`${doc.label}: no securities transaction parsed`)
-          else {
-            extra.push(...parsed)
-            if (doc.truncated) omissions.push(`${doc.label}: pages after the first parsed section were not parsed`)
+          if (parsed.length === 0) {
+            if (!labelsWithRows.has(doc.label)) putOmission(doc.label, 'no securities transaction parsed', 2)
+            continue
           }
+          extra.push(...parsed)
+          labelsWithRows.add(doc.label)
+          if (doc.truncated) putOmission(doc.label, 'pages after the first parsed section were not parsed', 3)
+          else omissionNotes.delete(doc.label)
+        }
+        for (const label of labelsWithRows) {
+          const note = omissionNotes.get(label)
+          if (note && note.rank < 3) omissionNotes.delete(label)
         }
       } catch {
-        omissions.push('Disclosure reports could not be fetched')
+        putOmission('Disclosure reports', 'could not be fetched', 1)
       }
     }
     const merged = uniqueFilings([...filings, ...extra]).sort(compareNewest)
-    await replaceFilings(db, merged, false, now, omissions.join('\n'))
+    const omissions = [...omissionNotes.values()].map((note) => note.line).join('\n')
+    await replaceFilings(db, merged, false, now, omissions)
     return { refreshed: true, source: 'hillscore', labeledSample: false, count: merged.length }
   } catch {
     if (existing > 0 && state?.source === 'hillscore') {

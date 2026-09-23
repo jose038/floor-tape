@@ -206,4 +206,52 @@ Assistant to the President and Chief of Staff, Trump-Vance (2025) - White House
     expect(filings.some((row) => row.politician.includes('Wiles') && row.chamber === 'whitehouse')).toBe(true)
     expect(filings.find((row) => row.politician.includes('Trump'))?.officialUrl).toContain('whitehouse.gov')
   })
+
+  it('records one truthful omission line per disclosure label', async () => {
+    const amendmentUrl =
+      'https://www.whitehouse.gov/wp-content/uploads/2026/01/President-Donald-J.-Trump-Periodic-Transaction-Report-Amendment-1.14.26.pdf'
+    const hugeUrl =
+      'https://www.whitehouse.gov/wp-content/uploads/2026/08/President-Donald-J.-Trump-Periodic-Transaction-Report-08.12.26.pdf'
+    const amendmentLabel = 'President Donald J. Trump Periodic Transaction Report Amendment 01.14.26'
+    const hugeLabel = 'President Donald J. Trump Periodic Transaction Report 08.12.26'
+    const trumpText = `PERIODIC TRANSACTION REPORT
+Filer: Donald J. Trump
+Position: President of the United States
+Date of Report: August 12, 2025
+27
+WISCONSIN ST HLTH & EFA REV ADVOCATE HLTH HOSP
+Purchase 7/17/25
+Amount
+100,001-250,000
+`
+    await ingestFilings(adapter(db), {
+      schemaSql,
+      force: true,
+      now: new Date('2026-09-23T16:00:00.000Z'),
+      fetchCsv: async () => [HEADER, 'Nancy Pelosi,P000197,D,CA,NVDA,NVIDIA Corporation,BUY,Self,2024-11-01,2024-11-20,1001,15000,140'].join('\n'),
+      fetchLegislators: async () => JSON.stringify([{ id: { bioguide: 'P000197' }, terms: [{ type: 'rep' }] }]),
+      fetchDisclosures: async () => ({
+        omissions: [`${hugeLabel}: pages after the first parsed section were not parsed`],
+        documents: [
+          { label: hugeLabel, url: hugeUrl, text: 'not a transaction report', hint: 'whitehouse', truncated: true },
+          { label: hugeLabel, url: hugeUrl, text: 'still not a transaction report', hint: 'whitehouse', truncated: true },
+          { label: amendmentLabel, url: amendmentUrl, text: trumpText, hint: 'whitehouse', truncated: true },
+        ],
+      }),
+    })
+    const state = await db.query<{ omissions: string }>('SELECT omissions FROM ingest_state WHERE id = 1')
+    const lines = (state.rows[0]?.omissions ?? '').split('\n').filter(Boolean)
+    const labels = lines.map((line) => line.split(':')[0])
+    expect(new Set(labels).size).toBe(labels.length)
+    expect(lines.filter((line) => line.startsWith(hugeLabel))).toEqual([`${hugeLabel}: no securities transaction parsed`])
+    expect(lines.filter((line) => line.startsWith(amendmentLabel))).toEqual([
+      `${amendmentLabel}: pages after the first parsed section were not parsed`,
+    ])
+    const stored = await db.query<{ official_url: string; n: number }>(
+      'SELECT official_url, COUNT(*)::int AS n FROM filings WHERE politician ILIKE $1 GROUP BY official_url',
+      ['%Trump%'],
+    )
+    expect(stored.rows.find((row) => row.official_url === hugeUrl)?.n ?? 0).toBe(0)
+    expect(Number(stored.rows.find((row) => row.official_url === amendmentUrl)?.n ?? 0)).toBeGreaterThan(0)
+  })
 })

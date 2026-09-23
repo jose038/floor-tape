@@ -223,7 +223,7 @@ function tickerOf(description: string): { symbol: string | null; yahooSymbol: st
 }
 
 const SKIP_LINE =
-  /^(#|description\b|type\b|date\b|\|?\s*date\b|notification\b|over 30 days\b|amount\b|yes\b|no\b|exhibit|in place of\b|amendment\b|periodic transaction\b|disclosure report\b|executive branch\b|filer\b|position\b|date of report\b|re:|public financial\b|u\.s\. office\b)/i
+  /^(#|description\b|type\b|date\b|\|?\s*date\b|notification\b|over 30 days\b|received over\b|days ago\b|\d+\s+days ago\b|amount\b|yes\b|no\b|exhibit|in place of\b|amendment\b|periodic transaction\b|disclosure report\b|executive branch\b|filer\b|position\b|date of report\b|re:|public financial\b|u\.s\. office\b)/i
 
 function cleanDescription(raw: string): string {
   const exhibit = raw.toLowerCase().lastIndexOf('exhibit')
@@ -234,7 +234,12 @@ function cleanDescription(raw: string): string {
     .split(/\n/)
     .map((line) => line.replace(/\|/g, ' ').replace(/\s+/g, ' ').trim())
     .filter((line) => line && !/^\d+$/.test(line) && !SKIP_LINE.test(line) && !/-\s*page\s+\d+/i.test(line))
-  return lines.join(' ').replace(/^\d+\s+/, '').replace(/\s+/g, ' ').trim()
+  return lines
+    .join(' ')
+    .replace(/\s+/g, ' ')
+    .replace(/^days ago\s+/i, '')
+    .replace(/^\d+\s+/, '')
+    .trim()
 }
 
 type Draft = {
@@ -245,8 +250,9 @@ type Draft = {
 }
 
 function linearDrafts(text: string): Draft[] {
+  // "30 DAYS AGO" is the notification column header, not transaction number 30.
   const re =
-    /(?:^|\n)\s*\d+\s+([\s\S]+?)\s+(Purchase|Sale|Exchange)(?:\s*\([^)\n]{0,40}\))?\s+(\d{1,2}\/\d{1,2}\/\d{2,4})\s+(?:Yes|No)\s+(\$?\s*\d[\d,]*(?:\s*-\s*\$?\s*\d[\d,]*)?|Over\s+\$?\s*\d[\d,]*)/gi
+    /(?:^|\n)\s*(?!\d+\s+DAYS\b)\d+\s+([\s\S]+?)\s+(Purchase|Sale|Exchange)(?:\s*\([^)\n]{0,40}\))?\s+(\d{1,2}\/\d{1,2}\/\d{2,4})\s+(?:Yes|No)\s+(\$?\s*\d[\d,]*(?:\s*-\s*\$?\s*\d[\d,]*)?|Over\s+\$?\s*\d[\d,]*)/gi
   const drafts: Draft[] = []
   for (const match of text.matchAll(re)) {
     const description = cleanDescription(match[1] ?? '')

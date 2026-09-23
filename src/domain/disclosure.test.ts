@@ -178,8 +178,10 @@ describe('white house and state periodic reports', () => {
     expect(susie?.filedDate).toBe('2025-06-13')
     expect(susie?.amountMin).toBe(15001)
     expect(susie?.amountMax).toBe(50000)
+    expect(susie?.assetName).toBe('Procter & Gamble Co. (PG)')
     expect(sixg?.amountMin).toBe(100001)
     expect(sixg?.amountMax).toBe(250000)
+    expect(sixg?.assetName).toBe('Defiance 5g Next General Connectivity ETF (SIXG)')
     expect(seatLabel(donald!.party, donald!.state, donald!.chamber)).toBe('White House')
     expect(seatLabel(donald!.party, donald!.state, donald!.chamber)).not.toContain('Chamber unknown')
     expect(toView(donald!, null, null).seat).toBe('White House')
@@ -198,6 +200,27 @@ describe('white house and state periodic reports', () => {
     expect(kushner[0]?.transactionType).toBe('SELL')
     expect(kushner[0]?.transactionDate).toBe('2025-08-25')
     expect(kushner[0]?.amountMin).toBe(1000001)
+    expect(kushner.map((row) => row.assetName).sort()).toEqual(['Alphabet/Google', 'Amazon'])
+    expect(kushner.every((row) => !/DAYS AGO/i.test(row.assetName))).toBe(true)
+    const paged = parsePeriodicReport(
+      `${KUSHNER_EXCERPT}
+15 Berkshire Hathaway Sale 08/25/2025 No $100,001 -
+$250,000
+Kushner, Charles - Page 3
+# DESCRIPTION TYPE DATE NOTIFICATION
+RECEIVED OVER
+30 DAYS AGO
+AMOUNT
+16 Blackrock Inc. Sale 08/25/2025 No $50,001 -
+$100,000
+30 Conmed Corp. Sale 08/25/2025 No $1,001 - $15,000
+`,
+      { url: KUSHNER_URL, source: 'disclosure', hint: 'state' },
+    )
+    expect(paged.find((row) => row.assetName.includes('Blackrock'))?.assetName).toBe('Blackrock Inc.')
+    expect(paged.find((row) => row.assetName.includes('Conmed'))?.assetName).toBe('Conmed Corp.')
+    expect(paged.find((row) => row.assetName.includes('Alphabet'))?.assetName).toBe('Alphabet/Google')
+    expect(paged.every((row) => !/DAYS AGO/i.test(row.assetName))).toBe(true)
     expect(institutionGroup(kushner[0]!.chamber)).toBe('other')
     expect(seatLabel(null, null, 'state')).toBe('State')
   })
