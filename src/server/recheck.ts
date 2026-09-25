@@ -5,7 +5,13 @@ export type ScheduleTimer = {
   clear(): void
 }
 
-export type ArmedRecheck<T> = {
+export type RecheckWake = {
+  /** False when this wake did not download because the last success is still inside the window. */
+  downloaded: boolean
+  lastSuccessAt: string | null
+}
+
+export type ArmedRecheck<T extends RecheckWake> = {
   trigger(force?: boolean): Promise<T>
   stop(): void
   idle(): Promise<void>
@@ -29,13 +35,17 @@ export function timeoutScheduleTimer(): ScheduleTimer {
 /**
  * Arm a process-local recheck. The first call runs immediately. Later calls
  * share one in-flight run. The timer fires the same `run` the poll uses.
+ * A wake that does not download, because a newer success is still inside the
+ * window, waits only until that success is 2 hours old.
  */
-export function armFilingRecheck<T>(deps: {
+export function armFilingRecheck<T extends RecheckWake>(deps: {
   run: (force: boolean) => Promise<T>
   timer: ScheduleTimer
+  now?: () => Date
   intervalMs?: number
 }): ArmedRecheck<T> {
   const intervalMs = deps.intervalMs ?? REFRESH_INTERVAL_MS
+  const now = deps.now ?? (() => new Date())
   let stopped = false
   let inflight: Promise<T> | null = null
   let pending = 0
@@ -53,6 +63,14 @@ export function armFilingRecheck<T>(deps: {
     return job
   }
 
+  function delayAfter(wake: RecheckWake | null): number {
+    if (!wake || wake.downloaded || !wake.lastSuccessAt) return intervalMs
+    const then = Date.parse(wake.lastSuccessAt)
+    if (Number.isNaN(then)) return intervalMs
+    const remain = then + intervalMs - now().getTime()
+    return remain > 0 ? remain : intervalMs
+  }
+
   function trigger(force = false): Promise<T> {
     if (!force && inflight) return inflight
     const job = track(Promise.resolve().then(() => deps.run(force)))
@@ -65,27 +83,31 @@ export function armFilingRecheck<T>(deps: {
     return job
   }
 
-  function armTimer() {
+  function armTimer(delayMs: number) {
     if (stopped) return
     deps.timer.set(() => {
       if (stopped) return
-      void trigger(false)
-        .catch((error: unknown) => {
+      void trigger(false).then(
+        (wake) => {
+          armTimer(delayAfter(wake))
+        },
+        (error: unknown) => {
           console.error('[floor-tape] filing recheck failed', error instanceof Error ? error.message : error)
-        })
-        .finally(() => {
-          armTimer()
-        })
-    }, intervalMs)
+          armTimer(intervalMs)
+        },
+      )
+    }, delayMs)
   }
 
-  void trigger(false)
-    .catch((error: unknown) => {
+  void trigger(false).then(
+    (wake) => {
+      armTimer(delayAfter(wake))
+    },
+    (error: unknown) => {
       console.error('[floor-tape] filing recheck failed', error instanceof Error ? error.message : error)
-    })
-    .finally(() => {
-      armTimer()
-    })
+      armTimer(intervalMs)
+    },
+  )
 
   return {
     trigger,

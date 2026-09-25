@@ -96,9 +96,11 @@ export type PollResult = {
   changed: boolean
   fresh: number
   sent: number
+  downloaded: boolean
+  lastSuccessAt: string | null
 }
 
-const skippedPoll: PollResult = { seeded: false, changed: false, fresh: 0, sent: 0 }
+const quietPoll = { seeded: false, changed: false, fresh: 0, sent: 0 }
 
 export async function runPoll(
   db: Db,
@@ -134,8 +136,8 @@ async function executePoll(
   // An unchanged Hillscore hash is not a reason to skip. Disclosure filings
   // live outside that file, so a due check always loads both sources.
   if (!(await ingestIsDue(db, now, force))) {
-    if (!(await readCursor(db)) && (await bookIsSample(db))) return skippedPoll
-    return publishStored(db, now, options.send)
+    if (!(await readCursor(db)) && (await bookIsSample(db))) return finish(db, quietPoll, false)
+    return publishStored(db, now, options.send, false)
   }
   const ingested = await ingestFilings(db, {
     schemaSql: options.schemaSql,
@@ -145,14 +147,28 @@ async function executePoll(
     fetchLegislators: options.fetchLegislators,
     fetchDisclosures: options.fetchDisclosures,
   })
-  if (ingested.labeledSample) return skippedPoll
-  return publishStored(db, now, options.send)
+  if (ingested.labeledSample) return finish(db, quietPoll, true)
+  return publishStored(db, now, options.send, true)
+}
+
+async function readLastSuccess(db: Db): Promise<string | null> {
+  const rows = await db.query<{ last_ingest_at: string | null }>('SELECT last_ingest_at FROM ingest_state WHERE id = 1')
+  return rows[0]?.last_ingest_at ?? null
+}
+
+async function finish(
+  db: Db,
+  result: { seeded: boolean; changed: boolean; fresh: number; sent: number },
+  downloaded: boolean,
+): Promise<PollResult> {
+  return { ...result, downloaded, lastSuccessAt: await readLastSuccess(db) }
 }
 
 async function publishStored(
   db: Db,
   now: Date,
   send: (subscription: PushSubscriptionRecord, message: PushMessage) => Promise<SendResult>,
+  downloaded: boolean,
 ): Promise<PollResult> {
   const stored = await listNotices(db)
   const cursor = await readCursor(db)
@@ -171,7 +187,7 @@ async function publishStored(
     }
   }
   await writeCursor(db, sha256(stored.ids.slice().sort().join('\n')), stored.ids, now)
-  return { seeded: diff.seeded, changed: diff.seeded || diff.fresh.length > 0, fresh: diff.fresh.length, sent }
+  return finish(db, { seeded: diff.seeded, changed: diff.seeded || diff.fresh.length > 0, fresh: diff.fresh.length, sent }, downloaded)
 }
 
 async function bookIsSample(db: Db): Promise<boolean> {

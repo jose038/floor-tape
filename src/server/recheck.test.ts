@@ -98,6 +98,7 @@ describe('process recheck schedule', () => {
     const sent: PushMessage[] = []
     const handle = armFilingRecheck({
       timer: clock,
+      now: () => clock.now(),
       run: (force) =>
         runPoll(db, {
           schemaSql,
@@ -164,6 +165,64 @@ describe('process recheck schedule', () => {
       expect(disclosureFetches).toBe(3)
       expect(forced.fresh).toBe(0)
       expect(sent).toHaveLength(1)
+    } finally {
+      handle.stop()
+    }
+  })
+
+  it('a forced refresh inside the window does not push the next download out by another 2 hours', async () => {
+    const pg = new PGlite()
+    const db = adapter(pg)
+    await ensureSchema(db, schemaSql)
+    const start = Date.parse('2026-06-01T00:00:00.000Z')
+    const clock = fakeClock(start)
+    const trades = csv([
+      'Nancy Pelosi,P000197,D,CA,NVDA,NVIDIA Corporation,BUY,Self,2024-11-01,2024-11-20,1001,15000,140',
+    ])
+    let csvFetches = 0
+    let disclosureFetches = 0
+    const handle = armFilingRecheck({
+      timer: clock,
+      now: () => clock.now(),
+      run: (force) =>
+        runPoll(db, {
+          schemaSql,
+          force,
+          now: clock.now(),
+          fetchCsv: async () => {
+            csvFetches += 1
+            return trades
+          },
+          fetchDisclosures: async () => {
+            disclosureFetches += 1
+            return { documents: [adaDoc], omissions: [] }
+          },
+          send: async () => 'ok',
+        }),
+    })
+
+    try {
+      await handle.idle()
+      expect(csvFetches).toBe(1)
+      expect(disclosureFetches).toBe(1)
+
+      clock.advance(60_000)
+      await handle.idle()
+      expect(csvFetches).toBe(1)
+
+      await handle.trigger(true)
+      expect(csvFetches).toBe(2)
+      expect(disclosureFetches).toBe(2)
+
+      clock.advance(TWO_HOURS - 60_000)
+      await handle.idle()
+      expect(csvFetches).toBe(2)
+      expect(disclosureFetches).toBe(2)
+
+      clock.advance(60_000)
+      await handle.idle()
+      expect(csvFetches).toBe(3)
+      expect(disclosureFetches).toBe(3)
     } finally {
       handle.stop()
     }
