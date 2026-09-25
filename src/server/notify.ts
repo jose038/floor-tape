@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto'
 import { freshFilingIds, pushesFor, type FilingNotice, type PushMessage } from '../domain/notify'
 import { ensureSchema, ingestFilings, ingestIsDue, type Db, type DisclosureBatch } from '../domain/ingest'
 import { getDb, readMigrationSql } from './db'
-import { armFilingRecheck, timeoutScheduleTimer, type ArmedRecheck } from './recheck'
+import { armFilingRecheck, pullsOnStartup, timeoutScheduleTimer, type ArmedRecheck } from './recheck'
 import { sharePull } from './single-flight'
 import { loadDisclosureBatch } from './disclosures'
 
@@ -252,6 +252,7 @@ export function armProcessRecheck(): ArmedRecheck<PollResult> {
   if (host[processRecheckKey]) return host[processRecheckKey]
   const handle = armFilingRecheck({
     timer: timeoutScheduleTimer(),
+    immediate: pullsOnStartup(),
     run: (force) => runProcessPoll(force),
   })
   host[processRecheckKey] = handle

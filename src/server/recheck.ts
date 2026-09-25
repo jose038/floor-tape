@@ -32,17 +32,23 @@ export function timeoutScheduleTimer(): ScheduleTimer {
   }
 }
 
+/** Cloud Run sets K_SERVICE. A boot-time pull there is what exhausted the instance. */
+export function pullsOnStartup(env: NodeJS.ProcessEnv = process.env): boolean {
+  return !env.K_SERVICE
+}
+
 /**
- * Arm a process-local recheck. The first call runs immediately. Later calls
- * share one in-flight run. The timer fires the same `run` the poll uses.
- * A wake that does not download, because a newer success is still inside the
- * window, waits only until that success is 2 hours old.
+ * Arm a process-local recheck. The first call runs immediately unless
+ * `immediate` is false. Later calls share one in-flight run. The timer fires
+ * the same `run` the poll uses. A wake that does not download, because a newer
+ * success is still inside the window, waits only until that success is 2 hours old.
  */
 export function armFilingRecheck<T extends RecheckWake>(deps: {
   run: (force: boolean) => Promise<T>
   timer: ScheduleTimer
   now?: () => Date
   intervalMs?: number
+  immediate?: boolean
 }): ArmedRecheck<T> {
   const intervalMs = deps.intervalMs ?? REFRESH_INTERVAL_MS
   const now = deps.now ?? (() => new Date())
@@ -99,15 +105,19 @@ export function armFilingRecheck<T extends RecheckWake>(deps: {
     }, delayMs)
   }
 
-  void trigger(false).then(
-    (wake) => {
-      armTimer(delayAfter(wake))
-    },
-    (error: unknown) => {
-      console.error('[floor-tape] filing recheck failed', error instanceof Error ? error.message : error)
-      armTimer(intervalMs)
-    },
-  )
+  if (deps.immediate === false) {
+    armTimer(intervalMs)
+  } else {
+    void trigger(false).then(
+      (wake) => {
+        armTimer(delayAfter(wake))
+      },
+      (error: unknown) => {
+        console.error('[floor-tape] filing recheck failed', error instanceof Error ? error.message : error)
+        armTimer(intervalMs)
+      },
+    )
+  }
 
   return {
     trigger,

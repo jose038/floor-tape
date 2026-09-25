@@ -184,7 +184,7 @@ def deploy_argv(pr_number: object, image: str, project: str, region: str) -> lis
         "--port",
         "8080",
         "--memory",
-        "1Gi",
+        "2Gi",
         "--cpu",
         "1",
         "--min-instances",

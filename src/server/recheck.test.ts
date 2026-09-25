@@ -6,7 +6,7 @@ import { listMigrationFiles } from '../domain/migrations'
 import type { PushMessage } from '../domain/notify'
 import { ensureSchema, type Db } from '../domain/ingest'
 import { PROCESS_DB, getDb } from './db'
-import { armFilingRecheck, type ScheduleTimer } from './recheck'
+import { armFilingRecheck, pullsOnStartup, type ScheduleTimer } from './recheck'
 import { runPoll, saveSubscription, type PushSubscriptionRecord } from './notify'
 
 const schemaSql = listMigrationFiles(['0002_filings.sql', '0003_push.sql', '0004_omissions.sql'])
@@ -223,6 +223,57 @@ describe('process recheck schedule', () => {
       await handle.idle()
       expect(csvFetches).toBe(3)
       expect(disclosureFetches).toBe(3)
+    } finally {
+      handle.stop()
+    }
+  })
+
+  it('on Cloud Run the process arms the timer without pulling during boot', async () => {
+    expect(pullsOnStartup({})).toBe(true)
+    expect(pullsOnStartup({ K_SERVICE: 'floor-tape' })).toBe(false)
+
+    const pg = new PGlite()
+    const db = adapter(pg)
+    await ensureSchema(db, schemaSql)
+    const start = Date.parse('2026-06-01T00:00:00.000Z')
+    const clock = fakeClock(start)
+    const trades = csv([
+      'Nancy Pelosi,P000197,D,CA,NVDA,NVIDIA Corporation,BUY,Self,2024-11-01,2024-11-20,1001,15000,140',
+    ])
+    let csvFetches = 0
+    let disclosureFetches = 0
+    const handle = armFilingRecheck({
+      timer: clock,
+      now: () => clock.now(),
+      immediate: false,
+      run: (force) =>
+        runPoll(db, {
+          schemaSql,
+          force,
+          now: clock.now(),
+          fetchCsv: async () => {
+            csvFetches += 1
+            return trades
+          },
+          fetchDisclosures: async () => {
+            disclosureFetches += 1
+            return { documents: [adaDoc], omissions: [] }
+          },
+          send: async () => 'ok',
+        }),
+    })
+
+    try {
+      await handle.idle()
+      expect(csvFetches).toBe(0)
+      expect(disclosureFetches).toBe(0)
+      clock.advance(TWO_HOURS - 1)
+      await handle.idle()
+      expect(csvFetches).toBe(0)
+      clock.advance(1)
+      await handle.idle()
+      expect(csvFetches).toBe(1)
+      expect(disclosureFetches).toBe(1)
     } finally {
       handle.stop()
     }
