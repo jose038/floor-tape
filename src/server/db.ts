@@ -3,7 +3,10 @@ import path from 'node:path'
 import { listMigrationFiles } from '../domain/migrations'
 import { ensureSchema, type Db } from '../domain/ingest'
 
-let opening: Promise<Db> | null = null
+/** One client for the process. The startup plugin and the request graph are separate bundles. */
+export const PROCESS_DB = '__floorTapeDb'
+
+type DbHost = typeof globalThis & { [PROCESS_DB]?: Promise<Db> }
 
 export async function readMigrationSql(): Promise<string> {
   const dir = path.join(process.cwd(), 'migrations')
@@ -55,6 +58,7 @@ async function openDb(): Promise<Db> {
 }
 
 export function getDb(): Promise<Db> {
-  if (!opening) opening = openDb()
-  return opening
+  const host = globalThis as DbHost
+  if (!host[PROCESS_DB]) host[PROCESS_DB] = openDb()
+  return host[PROCESS_DB]
 }

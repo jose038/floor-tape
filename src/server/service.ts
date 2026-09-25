@@ -20,6 +20,7 @@ import { toView, type ViewFiling } from '../domain/view'
 
 export type { RosterMember }
 import { getDb, readMigrationSql } from './db'
+import { sharePull } from './single-flight'
 
 const HILLSCORE_CSV = 'https://hillscore.com/data/files/trades.csv'
 const LEGISLATORS_URL = 'https://unitedstates.github.io/congress-legislators/legislators-current.json'
@@ -45,7 +46,7 @@ let inflight: Promise<IngestResult> | null = null
 
 export function ensureIngest(force = false): Promise<IngestResult> {
   if (!force && inflight) return inflight
-  const run = (async () => {
+  const run = sharePull(force, async () => {
     const db = await getDb()
     const schemaSql = await readMigrationSql()
     const result = await ingestFilings(db, {
@@ -57,7 +58,7 @@ export function ensureIngest(force = false): Promise<IngestResult> {
     })
     console.log(`[floor-tape] source=${result.source} rows=${result.count} refreshed=${result.refreshed} sample=${result.labeledSample}`)
     return result
-  })()
+  })
   inflight = run
   void run.finally(() => {
     if (inflight === run) inflight = null

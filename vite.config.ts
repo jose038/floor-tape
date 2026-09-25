@@ -21,5 +21,10 @@ export default defineConfig({
   optimizeDeps: {
     exclude: ['@electric-sql/pglite', 'pg', 'unpdf', '@napi-rs/canvas'],
   },
-  plugins: [tailwindcss(), tanstackStart({ srcDirectory: 'src' }), viteReact(), nitro()],
+  plugins: [
+    tailwindcss(),
+    tanstackStart({ srcDirectory: 'src' }),
+    viteReact(),
+    nitro({ plugins: ['src/server/filing-recheck-plugin.ts'] }),
+  ],
 })

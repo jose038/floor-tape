@@ -34,9 +34,10 @@ Idle cost is zero. You pay only for the seconds a request is being served, and
 Cloud Run’s monthly free tier covers a personal tape. Do not add a load balancer,
 a serverless NEG, a reserved external IP, or `min-instances=1`.
 
-New filings are checked by Cloud Scheduler every 15 minutes (`floor-tape-poll` →
-`POST /internal/poll`). The container wakes, compares the Hillscore file with the
-last check, sends Web Push for anything new, and scales back to zero. The first
+New filings are checked by Cloud Scheduler about every 2 hours (`floor-tape-poll` →
+`POST /internal/poll`). The container wakes, loads the Hillscore trades file and
+disclosure documents, sends Web Push for anything new, and scales back to zero. A
+warm server also rechecks about every 2 hours without a page load. The first
 check only records what is already on the tape, so installing the app does not
 replay history. `./deploy/setup-notify.sh` creates the keys and the job.
 

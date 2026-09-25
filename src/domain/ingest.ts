@@ -98,6 +98,14 @@ async function countFilings(db: Db): Promise<number> {
   return Number(rows[0]?.n ?? 0)
 }
 
+/** True when an unforced check should download. An empty book is always due. */
+export async function ingestIsDue(db: Db, now: Date, force: boolean): Promise<boolean> {
+  const state = await readState(db)
+  const existing = await countFilings(db)
+  if (existing === 0) return true
+  return shouldRefresh(state?.last_ingest_at ?? null, now, force)
+}
+
 function paramsFor(row: Filing): unknown[] {
   return [
     row.id,
@@ -176,12 +184,6 @@ async function replaceFilings(db: Db, rows: Filing[], labeledSample: boolean, no
     }
     throw error
   }
-}
-
-async function stampFailure(db: Db, now: Date): Promise<void> {
-  const state = await readState(db)
-  if (!state) return
-  await db.query('UPDATE ingest_state SET last_ingest_at = $1 WHERE id = 1', [now.toISOString()])
 }
 
 /**
@@ -266,7 +268,7 @@ export async function ingestFilings(db: Db, deps: IngestDeps): Promise<IngestRes
     return { refreshed: true, source: 'hillscore', labeledSample: false, count: merged.length }
   } catch {
     if (existing > 0 && state?.source === 'hillscore') {
-      await stampFailure(db, now)
+      // Leave last_ingest_at on the previous success so a failed fetch stays due.
       return { refreshed: false, source: 'hillscore', labeledSample: false, count: existing }
     }
     const filings = sampleFilings()

@@ -11,7 +11,7 @@ export function PushPanel() {
     <section className="space-y-2 border border-line bg-panel px-3 py-3">
       <h2 className="font-mono text-[11px] uppercase tracking-wider text-muted">Push notifications</h2>
       <p className="font-mono text-[12px] leading-relaxed text-muted">
-        A check runs every 15 minutes. Each new filing sends a notification. A burst of more than five becomes one summary. The server sleeps between checks.
+        A check runs about every 2 hours. Each new filing sends a notification. A burst of more than five becomes one summary. The server sleeps between checks.
       </p>
       {ios && !standalone ? (
         <p className="font-mono text-[12px] leading-relaxed text-late">
