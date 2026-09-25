@@ -27,7 +27,7 @@ Production is a second service, `floor-tape`, with its own stable `run.app` URL.
 | Runtime identity | `floor-tape-run@j-proj-310112.iam.gserviceaccount.com` (no Secret Manager access) |
 | Database | Ephemeral PGLite inside the instance. First request ingests Hillscore. No Neon bill. |
 | Auth | Off. The tape is public disclosure data. |
-| Scale | min instances 0, max 1, 1 vCPU, 1 GiB |
+| Scale | min instances 0, max 1, 1 vCPU, 2 GiB (a disclosure recheck exceeds 1 GiB) |
 | Probe | `GET /health` returns `ok` and does not touch the database |
 
 Idle cost is zero. You pay only for the seconds a request is being served, and

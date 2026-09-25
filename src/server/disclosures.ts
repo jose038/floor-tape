@@ -57,16 +57,11 @@ export async function loadDisclosureBatch(): Promise<DisclosureBatch> {
     { label: CHARLES_LABEL, url: CHARLES_KUSHNER_278T, hint: 'state' as const },
   ]
   const documents: DisclosureDocument[] = []
-  const queue = [...jobs]
-  async function worker() {
-    for (;;) {
-      const job = queue.shift()
-      if (!job) return
-      const doc = await readOne(job, omissions)
-      if (doc) documents.push(doc)
-    }
+  // One report at a time. Two OCR processes together exceeded the 1 GiB instance.
+  for (const job of jobs) {
+    const doc = await readOne(job, omissions)
+    if (doc) documents.push(doc)
   }
-  await Promise.all([worker(), worker()])
   console.log(`[floor-tape] disclosures parsed=${documents.length} notes=${omissions.length}`)
   return { documents, omissions }
 }
