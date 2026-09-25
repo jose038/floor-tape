@@ -19,7 +19,7 @@ export function SourceBanner({ labeledSample }: { labeledSample: boolean }) {
   }
   return (
     <p className="font-mono text-[11px] leading-relaxed text-muted">
-      Hillscore compilation of most-active traders, not all 535 members. Filed since 2023. Official documents remain the House Clerk and Senate eFD.
+      House and Senate filings from Hillscore, plus White House periodic transaction reports that parsed. Filed since 2023.
     </p>
   )
 }

@@ -134,6 +134,8 @@ function AlertsPage() {
           {[
             ['house', 'House'],
             ['senate', 'Senate'],
+            ['whitehouse', 'White House'],
+            ['other', 'Other'],
           ].map(([id, label]) => {
             const on = rules.chambers.includes(id)
             return (

@@ -1,6 +1,6 @@
 import { createFileRoute, Link } from '@tanstack/react-router'
 import { MoneyBlock, PriceChart, SourceBanner } from '../components/ui'
-import { formatPct, formatPx, formatRange, formatSignedUsd } from '../domain/pure'
+import { documentLabel, formatPct, formatPx, formatRange, formatSignedUsd } from '../domain/pure'
 import { loadTrade } from '../server/api'
 
 export const Route = createFileRoute('/trade/$id')({
@@ -15,7 +15,7 @@ function TradePage() {
     return <p className="font-mono text-sm text-muted">That filing is not on the tape.</p>
   }
   const range = formatRange(filing.amountMin, filing.amountMax, filing.amountMid)
-  const portal = filing.officialUrl.includes('senate.gov') ? 'Senate eFD' : 'House Clerk'
+  const portal = documentLabel(filing)
   return (
     <div className="min-w-0 space-y-3">
       <SourceBanner labeledSample={data.labeledSample} />

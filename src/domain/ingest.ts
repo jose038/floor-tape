@@ -1,7 +1,9 @@
+import { parsePeriodicReport, type DisclosureDocument } from './disclosure'
 import {
   SAMPLE_CSV,
   SAMPLE_LEGISLATORS_JSON,
   buildFilings,
+  compareNewest,
   parseLegislators,
   sampleFilings,
   shouldRefresh,
@@ -13,12 +15,18 @@ export type Db = {
   query<T = Record<string, unknown>>(sql: string, params?: unknown[]): Promise<T[]>
 }
 
+export type DisclosureBatch = {
+  documents: DisclosureDocument[]
+  omissions: string[]
+}
+
 export type IngestDeps = {
   schemaSql: string
   now?: Date
   force?: boolean
   fetchCsv: () => Promise<string>
   fetchLegislators?: () => Promise<string>
+  fetchDisclosures?: () => Promise<DisclosureBatch>
 }
 
 export type IngestResult = {
@@ -118,7 +126,18 @@ function paramsFor(row: Filing): unknown[] {
   ]
 }
 
-async function replaceFilings(db: Db, rows: Filing[], labeledSample: boolean, now: Date): Promise<void> {
+function uniqueFilings(rows: Filing[]): Filing[] {
+  const seen = new Set<string>()
+  const unique: Filing[] = []
+  for (const row of rows) {
+    if (seen.has(row.id)) continue
+    seen.add(row.id)
+    unique.push(row)
+  }
+  return unique
+}
+
+async function replaceFilings(db: Db, rows: Filing[], labeledSample: boolean, now: Date, omissions = ''): Promise<void> {
   await db.exec('BEGIN')
   try {
     await db.exec('DELETE FROM filings')
@@ -138,14 +157,15 @@ async function replaceFilings(db: Db, rows: Filing[], labeledSample: boolean, no
       )
     }
     await db.query(
-      `INSERT INTO ingest_state (id, last_ingest_at, source, labeled_sample, row_count)
-       VALUES (1, $1, $2, $3, $4)
+      `INSERT INTO ingest_state (id, last_ingest_at, source, labeled_sample, row_count, omissions)
+       VALUES (1, $1, $2, $3, $4, $5)
        ON CONFLICT (id) DO UPDATE SET
          last_ingest_at = EXCLUDED.last_ingest_at,
          source = EXCLUDED.source,
          labeled_sample = EXCLUDED.labeled_sample,
-         row_count = EXCLUDED.row_count`,
-      [now.toISOString(), labeledSample ? 'sample' : 'hillscore', labeledSample, rows.length],
+         row_count = EXCLUDED.row_count,
+         omissions = EXCLUDED.omissions`,
+      [now.toISOString(), labeledSample ? 'sample' : 'hillscore', labeledSample, rows.length, omissions],
     )
     await db.exec('COMMIT')
   } catch (error) {
@@ -200,8 +220,50 @@ export async function ingestFilings(db: Db, deps: IngestDeps): Promise<IngestRes
     }
     const filings = buildFilings(csv, parseLegislators(legislatorsJson ?? '[]'), 'hillscore')
     if (filings.length === 0) throw new Error('Hillscore CSV had no filings on or after 2023-01-01')
-    await replaceFilings(db, filings, false, now)
-    return { refreshed: true, source: 'hillscore', labeledSample: false, count: filings.length }
+    const extra: Filing[] = []
+    const omissionNotes = new Map<string, { rank: number; line: string }>()
+    const labelsWithRows = new Set<string>()
+    const putOmission = (label: string, message: string, rank: number) => {
+      const line = `${label}: ${message}`
+      const prev = omissionNotes.get(label)
+      if (!prev || rank > prev.rank) omissionNotes.set(label, { rank, line })
+    }
+    if (deps.fetchDisclosures) {
+      try {
+        const batch = await deps.fetchDisclosures()
+        for (const line of batch.omissions) {
+          const split = line.indexOf(': ')
+          if (split === -1) putOmission(line, 'report could not be parsed', 1)
+          else putOmission(line.slice(0, split), line.slice(split + 2), 1)
+        }
+        for (const doc of batch.documents) {
+          const parsed = parsePeriodicReport(doc.text, {
+            url: doc.url,
+            source: 'disclosure',
+            hint: doc.hint,
+            label: doc.label,
+          })
+          if (parsed.length === 0) {
+            if (!labelsWithRows.has(doc.label)) putOmission(doc.label, 'no securities transaction parsed', 2)
+            continue
+          }
+          extra.push(...parsed)
+          labelsWithRows.add(doc.label)
+          if (doc.truncated) putOmission(doc.label, 'pages after the first parsed section were not parsed', 3)
+          else omissionNotes.delete(doc.label)
+        }
+        for (const label of labelsWithRows) {
+          const note = omissionNotes.get(label)
+          if (note && note.rank < 3) omissionNotes.delete(label)
+        }
+      } catch {
+        putOmission('Disclosure reports', 'could not be fetched', 1)
+      }
+    }
+    const merged = uniqueFilings([...filings, ...extra]).sort(compareNewest)
+    const omissions = [...omissionNotes.values()].map((note) => note.line).join('\n')
+    await replaceFilings(db, merged, false, now, omissions)
+    return { refreshed: true, source: 'hillscore', labeledSample: false, count: merged.length }
   } catch {
     if (existing > 0 && state?.source === 'hillscore') {
       await stampFailure(db, now)

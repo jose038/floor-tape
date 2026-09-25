@@ -22,9 +22,11 @@ npm run typecheck
 
 ## Sources
 
-- Filings: [Hillscore trades.csv](https://hillscore.com/data/) (CC BY 4.0), filed since 2023. Most-active traders, not all 535 members. If that file is down, a labeled sample book is shown.
-- Official documents: [House Clerk](https://disclosures-clerk.house.gov/) and [Senate eFD](https://efdsearch.senate.gov/). Those portals are linked, not scraped.
-- Chamber: [congress-legislators](https://unitedstates.github.io/congress-legislators/legislators-current.json) current file, joined on bioguide.
+- House and Senate filings: [Hillscore trades.csv](https://hillscore.com/data/) (CC BY 4.0), filed since 2023. Most-active traders, not all 535 members. If that file is down, a labeled sample book is shown.
+- White House Office periodic transaction reports: [whitehouse.gov/disclosures](https://www.whitehouse.gov/disclosures/). A report is included only when it parses into a securities transaction.
+- Charles Kushner, when his public OGE Form 278-T parses, is labeled State (Ambassador to France and Monaco), not White House. No public transaction report was included for Jared Kushner (OGE FY26-109, 2026-09-14, no records; not on the White House index) or Ivanka Trump (not on that index).
+- Official documents: [House Clerk](https://disclosures-clerk.house.gov/), [Senate eFD](https://efdsearch.senate.gov/), and the White House or OGE disclosure for White House filers. The congressional portals are linked, not scraped.
+- Chamber: [congress-legislators](https://unitedstates.github.io/congress-legislators/legislators-current.json) current file, joined on bioguide. White House filers have no bioguide.
 - Prices: Yahoo Finance spark, then the chart endpoint. `BRK.B` is requested as `BRK-B`.
 
 ## Hypothetical P&L

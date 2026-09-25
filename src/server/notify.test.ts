@@ -7,7 +7,7 @@ import type { PushMessage } from '../domain/notify'
 import { ensureSchema, type Db } from '../domain/ingest'
 import { runPoll, saveSubscription, type PushSubscriptionRecord } from './notify'
 
-const schemaSql = listMigrationFiles(['0002_filings.sql', '0003_push.sql'])
+const schemaSql = listMigrationFiles(['0002_filings.sql', '0003_push.sql', '0004_omissions.sql'])
   .map((name) => readFileSync(path.join(process.cwd(), 'migrations', name), 'utf8'))
   .join('\n')
 

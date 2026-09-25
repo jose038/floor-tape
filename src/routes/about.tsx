@@ -1,7 +1,8 @@
 import { createFileRoute, useRouter } from '@tanstack/react-router'
 import { useState } from 'react'
 import { SourceBanner } from '../components/ui'
-import { HOUSE_PORTAL, LARGE_AMOUNT_MIN, SENATE_PORTAL } from '../domain/pure'
+import { SOURCES_COPY } from '../domain/disclosure'
+import { HOUSE_PORTAL, LARGE_AMOUNT_MIN, SENATE_PORTAL, WHITE_HOUSE_DISCLOSURES } from '../domain/pure'
 import { loadAbout, refreshLiveFilings } from '../server/api'
 
 export const Route = createFileRoute('/about')({
@@ -64,23 +65,28 @@ return = last_close / trade_date_close - 1`}</pre>
       </section>
       <section className="space-y-2">
         <h2 className="font-mono text-[11px] uppercase tracking-wider text-muted">Sources</h2>
+        <p className="whitespace-pre-wrap">{SOURCES_COPY}</p>
         <p>
-          Filings since 2023 come from the{' '}
           <a className="text-accent" href="https://hillscore.com/data/" target="_blank" rel="noreferrer">
             Hillscore trades.csv
-          </a>{' '}
-          compilation, CC BY 4.0. Hillscore covers most-active traders, not all 535 members. If that file is unreachable, the tape shows a labeled non-official sample so the screens still work. Official documents remain the{' '}
+          </a>
+          {' · '}
           <a className="text-accent" href={HOUSE_PORTAL} target="_blank" rel="noreferrer">
             House Clerk
-          </a>{' '}
-          and{' '}
+          </a>
+          {' · '}
           <a className="text-accent" href={SENATE_PORTAL} target="_blank" rel="noreferrer">
             Senate eFD
           </a>
-          . Floor Tape does not scrape those portals. Chamber is joined from the public congress-legislators file when a bioguide id is present. Prices are Yahoo Finance public quotes. No paid price feed.
+          {' · '}
+          <a className="text-accent" href={WHITE_HOUSE_DISCLOSURES} target="_blank" rel="noreferrer">
+            White House disclosures
+          </a>
+          . Prices are Yahoo Finance public quotes. No paid price feed.
         </p>
+        {data.omissions ? <p className="whitespace-pre-wrap font-mono text-[12px] text-muted">{data.omissions}</p> : null}
         <p className="font-mono text-[11px] text-muted">
-          Stored now: {data.labeledSample ? 'sample book' : 'live Hillscore rows'} · {data.rowCount} rows
+          Stored now: {data.labeledSample ? 'sample book' : 'live filings'} · {data.rowCount} rows
           {data.lastIngestAt ? ` · ingested ${data.lastIngestAt}` : ''}.
         </p>
       </section>
