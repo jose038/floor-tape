@@ -1,7 +1,10 @@
 import { createHash } from 'node:crypto'
 import { freshFilingIds, pushesFor, type FilingNotice, type PushMessage } from '../domain/notify'
-import { ingestFilings, type Db } from '../domain/ingest'
+import { ensureSchema, ingestFilings, ingestIsDue, type Db, type DisclosureBatch } from '../domain/ingest'
 import { getDb, readMigrationSql } from './db'
+import { armFilingRecheck, timeoutScheduleTimer, type ArmedRecheck } from './recheck'
+import { sharePull } from './single-flight'
+import { loadDisclosureBatch } from './disclosures'
 
 export type PushSubscriptionRecord = {
   endpoint: string
@@ -88,50 +91,120 @@ export function parseSubscription(body: unknown): PushSubscriptionRecord | null 
   return { endpoint: record.endpoint, keys: { p256dh: record.keys.p256dh, auth: record.keys.auth } }
 }
 
+export type PollResult = {
+  seeded: boolean
+  changed: boolean
+  fresh: number
+  sent: number
+  downloaded: boolean
+  lastSuccessAt: string | null
+}
+
+const quietPoll = { seeded: false, changed: false, fresh: 0, sent: 0 }
+
 export async function runPoll(
   db: Db,
   options: {
     schemaSql: string
     fetchCsv: () => Promise<string>
     fetchLegislators?: () => Promise<string>
+    fetchDisclosures?: () => Promise<DisclosureBatch>
     send: (subscription: PushSubscriptionRecord, message: PushMessage) => Promise<SendResult>
     now?: Date
+    force?: boolean
   },
-): Promise<{ seeded: boolean; changed: boolean; fresh: number; sent: number }> {
+): Promise<PollResult> {
+  const force = options.force ?? false
+  return sharePull(force, () => executePoll(db, options))
+}
+
+async function executePoll(
+  db: Db,
+  options: {
+    schemaSql: string
+    fetchCsv: () => Promise<string>
+    fetchLegislators?: () => Promise<string>
+    fetchDisclosures?: () => Promise<DisclosureBatch>
+    send: (subscription: PushSubscriptionRecord, message: PushMessage) => Promise<SendResult>
+    now?: Date
+    force?: boolean
+  },
+): Promise<PollResult> {
   const now = options.now ?? new Date()
-  const csv = await options.fetchCsv()
-  const csvHash = sha256(csv)
-  const cursor = await readCursor(db)
-  if (cursor && cursor.csvHash === csvHash) {
-    return { seeded: false, changed: false, fresh: 0, sent: 0 }
+  const force = options.force ?? false
+  await ensureSchema(db, options.schemaSql)
+  // An unchanged Hillscore hash is not a reason to skip. Disclosure filings
+  // live outside that file, so a due check always loads both sources.
+  if (!(await ingestIsDue(db, now, force))) {
+    if (!(await readCursor(db)) && (await bookIsSample(db))) return finish(db, quietPoll, false)
+    return publishStored(db, now, options.send, false)
   }
-  await ingestFilings(db, {
+  const ingested = await ingestFilings(db, {
     schemaSql: options.schemaSql,
     force: true,
     now,
-    fetchCsv: async () => csv,
+    fetchCsv: options.fetchCsv,
     fetchLegislators: options.fetchLegislators,
+    fetchDisclosures: options.fetchDisclosures,
   })
-  const rows = (await db.query<Record<string, unknown>>(
-    'SELECT id, politician, symbol, asset_name, transaction_type, amount_min, amount_max, amount_mid, filed_date FROM filings',
-  )).map(asNotice)
-  const ids = rows.map((row) => row.id)
-  const diff = freshFilingIds(cursor ? cursor.seen : null, ids)
-  const freshRows = rows.filter((row) => diff.fresh.includes(row.id))
+  if (ingested.labeledSample) return finish(db, quietPoll, true)
+  return publishStored(db, now, options.send, true)
+}
+
+async function readLastSuccess(db: Db): Promise<string | null> {
+  const rows = await db.query<{ last_ingest_at: string | null }>('SELECT last_ingest_at FROM ingest_state WHERE id = 1')
+  return rows[0]?.last_ingest_at ?? null
+}
+
+async function finish(
+  db: Db,
+  result: { seeded: boolean; changed: boolean; fresh: number; sent: number },
+  downloaded: boolean,
+): Promise<PollResult> {
+  return { ...result, downloaded, lastSuccessAt: await readLastSuccess(db) }
+}
+
+async function publishStored(
+  db: Db,
+  now: Date,
+  send: (subscription: PushSubscriptionRecord, message: PushMessage) => Promise<SendResult>,
+  downloaded: boolean,
+): Promise<PollResult> {
+  const stored = await listNotices(db)
+  const cursor = await readCursor(db)
+  const diff = freshFilingIds(cursor ? cursor.seen : null, stored.ids)
+  const freshRows = stored.rows.filter((row) => diff.fresh.includes(row.id))
   const messages = diff.seeded ? [] : pushesFor(freshRows)
   let sent = 0
   if (messages.length > 0) {
     const subscriptions = await listSubscriptions(db)
     for (const message of messages) {
       for (const subscription of subscriptions) {
-        const result = await options.send(subscription, message)
+        const result = await send(subscription, message)
         if (result === 'gone') await deleteSubscription(db, subscription.endpoint)
         if (result === 'ok') sent += 1
       }
     }
   }
-  await writeCursor(db, csvHash, ids, now)
-  return { seeded: diff.seeded, changed: true, fresh: diff.fresh.length, sent }
+  await writeCursor(db, sha256(stored.ids.slice().sort().join('\n')), stored.ids, now)
+  return finish(db, { seeded: diff.seeded, changed: diff.seeded || diff.fresh.length > 0, fresh: diff.fresh.length, sent }, downloaded)
+}
+
+async function bookIsSample(db: Db): Promise<boolean> {
+  const rows = await db.query<{ labeled_sample: boolean | number | string | null; source: string | null }>(
+    'SELECT labeled_sample, source FROM ingest_state WHERE id = 1',
+  )
+  const row = rows[0]
+  if (!row) return false
+  const flag = row.labeled_sample
+  return row.source === 'sample' || flag === true || flag === 1 || flag === '1' || flag === 't' || flag === 'true'
+}
+
+async function listNotices(db: Db): Promise<{ rows: FilingNotice[]; ids: string[] }> {
+  const rows = (await db.query<Record<string, unknown>>(
+    'SELECT id, politician, symbol, asset_name, transaction_type, amount_min, amount_max, amount_mid, filed_date FROM filings',
+  )).map(asNotice)
+  return { rows, ids: rows.map((row) => row.id) }
 }
 
 async function fetchText(url: string): Promise<string> {
@@ -172,16 +245,36 @@ async function sendWebPush(subscription: PushSubscriptionRecord, message: PushMe
   }
 }
 
-export async function handlePoll(request: Request): Promise<Response> {
-  if (!pollAuthorized(request)) return new Response('unauthorized\n', { status: 401 })
+const processRecheckKey = '__floorTapeRecheck'
+
+export function armProcessRecheck(): ArmedRecheck<PollResult> {
+  const host = globalThis as typeof globalThis & { [processRecheckKey]?: ArmedRecheck<PollResult> }
+  if (host[processRecheckKey]) return host[processRecheckKey]
+  const handle = armFilingRecheck({
+    timer: timeoutScheduleTimer(),
+    run: (force) => runProcessPoll(force),
+  })
+  host[processRecheckKey] = handle
+  console.log('[floor-tape] filing recheck armed')
+  return handle
+}
+
+async function runProcessPoll(force: boolean): Promise<PollResult> {
   const db = await getDb()
   const schemaSql = await readMigrationSql()
-  const result = await runPoll(db, {
+  return runPoll(db, {
     schemaSql,
+    force,
     fetchCsv: () => fetchText(HILLSCORE_CSV),
     fetchLegislators: () => fetchText(LEGISLATORS_URL),
+    fetchDisclosures: () => loadDisclosureBatch(),
     send: sendWebPush,
   })
+}
+
+export async function handlePoll(request: Request): Promise<Response> {
+  if (!pollAuthorized(request)) return new Response('unauthorized\n', { status: 401 })
+  const result = await armProcessRecheck().trigger(false)
   return Response.json(result)
 }
 

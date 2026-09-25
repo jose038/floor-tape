@@ -92,14 +92,17 @@ describe('floor tape pure rules', () => {
     expect(mapped).toBe('BRK-B')
   })
 
-  it('inside 12 hours refresh is skipped unless forced', () => {
+  it('unforced refresh is due at 2 hours, not sooner, and a missing check is due', () => {
     const now = new Date('2026-06-01T00:00:00.000Z')
-    const inside = new Date(now.getTime() - REFRESH_INTERVAL_MS + 60_000).toISOString()
-    const skipped = shouldRefresh(inside, now, false)
-    const forced = shouldRefresh(inside, now, true)
-    console.log('inside 12 hours skipped', skipped === false, 'forced', forced === true)
-    expect(skipped).toBe(false)
-    expect(forced).toBe(true)
+    const twoHours = 2 * 60 * 60 * 1000
+    const justUnder = new Date(now.getTime() - twoHours + 1).toISOString()
+    const exact = new Date(now.getTime() - twoHours).toISOString()
+    console.log('interval', REFRESH_INTERVAL_MS, 'just under', shouldRefresh(justUnder, now, false), 'exact', shouldRefresh(exact, now, false))
+    expect(REFRESH_INTERVAL_MS).toBe(twoHours)
+    expect(shouldRefresh(justUnder, now, false)).toBe(false)
+    expect(shouldRefresh(exact, now, false)).toBe(true)
+    expect(shouldRefresh(null, now, false)).toBe(true)
+    expect(shouldRefresh(justUnder, now, true)).toBe(true)
   })
 
   it('the alert preview string includes member, ticker or asset, buy or sell, both range ends, trade date, filed date, and a Clerk or eFD link', () => {

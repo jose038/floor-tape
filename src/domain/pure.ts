@@ -3,7 +3,7 @@
 export const FILED_SINCE = '2023-01-01'
 export const LATE_AFTER_DAYS = 45
 export const LARGE_AMOUNT_MIN = 100_001
-export const REFRESH_INTERVAL_MS = 12 * 60 * 60 * 1000
+export const REFRESH_INTERVAL_MS = 2 * 60 * 60 * 1000
 export const HOUSE_PORTAL = 'https://disclosures-clerk.house.gov/'
 export const SENATE_PORTAL = 'https://efdsearch.senate.gov/'
 export const WHITE_HOUSE_DISCLOSURES = 'https://www.whitehouse.gov/disclosures/'

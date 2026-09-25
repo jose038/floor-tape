@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Enable Web Push without leaving Cloud Run running.
 # First run generates VAPID keys and a poll token, stores them on the service,
-# and creates a Scheduler job that POSTs /internal/poll every 15 minutes.
+# and creates a Scheduler job that POSTs /internal/poll about every 2 hours.
 #
 #   ./deploy/setup-notify.sh
 set -euo pipefail
@@ -76,7 +76,7 @@ if gcloud scheduler jobs describe "${JOB}" --project="${PROJECT}" --location="${
   gcloud scheduler jobs update http "${JOB}" \
     --project="${PROJECT}" \
     --location="${REGION}" \
-    --schedule="*/15 * * * *" \
+    --schedule="0 */2 * * *" \
     --time-zone="Europe/London" \
     --uri="${URL}/internal/poll" \
     --http-method=POST \
@@ -88,7 +88,7 @@ else
   gcloud scheduler jobs create http "${JOB}" \
     --project="${PROJECT}" \
     --location="${REGION}" \
-    --schedule="*/15 * * * *" \
+    --schedule="0 */2 * * *" \
     --time-zone="Europe/London" \
     --uri="${URL}/internal/poll" \
     --http-method=POST \
@@ -98,4 +98,4 @@ else
     --quiet
 fi
 
-echo "Poll ${URL}/internal/poll every 15 minutes. Cloud Run still scales to zero."
+echo "Poll ${URL}/internal/poll about every 2 hours. Cloud Run still scales to zero."
